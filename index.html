@@ -895,7 +895,7 @@ async function ask(userText, display) {
   S.history.push({ role: 'user', content: userText });
   while (S.history.length > 16) S.history.shift();
   while (S.history.length && S.history[0].role !== 'user') S.history.shift();
-  const heavy = /draft|write|script|email|dm\b|proposal|plan|strategy|offer|pric|objection|outline|post|caption|content|idea|analy|review|brief|why|how should/i.test(userText);
+  const heavy = /draft|write|script|email|\bdms?\b|proposal|objection|outline|caption|content idea|post (for|about)|weekly report/i.test(userText);
   const bubble = addMsg('jarvis', '…');
   const my = ctl = new AbortController();
   S.busy = true; setPhase('thinking'); spoken = 0;
@@ -1029,17 +1029,22 @@ function stopSpeaking() {
   if (pending) { pending = 0; resumeMic() }
 }
 function feedSpeech(say, final) {
-  const rest = say.slice(spoken); if (!rest) return;
-  let end = -1;
-  if (final) end = rest.length;
-  else if (spoken === 0) { const m = /[.!?]["')]?\s/.exec(rest); if (m && m.index > 12) end = m.index + m[0].length }
-  if (end > 0) { const chunk = rest.slice(0, end).trim(); spoken += end; if (chunk) speak(chunk) }
+  // Speak each sentence the moment it arrives instead of waiting for the whole reply.
+  for (;;) {
+    const rest = say.slice(spoken); if (!rest.trim()) return;
+    const m = /[.!?]["')]?\s/.exec(rest);
+    const end = m ? m.index + m[0].length : final ? rest.length : -1;
+    if (end <= 0) return;
+    const chunk = rest.slice(0, end).trim(); spoken += end;
+    if (chunk) speak(chunk);
+  }
 }
 $('#stopBtn').onclick = () => { if (ctl) ctl.abort(); stopSpeaking(); setPhase(idlePhase()) };
 
 /* ---------- voice in: always listening while unlocked ---------- */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let rec = null, micWanted = false, micPaused = false, micBackoff = 250;
+const early = { t: null, text: '', at: 0 };
 function micUI() {
   const on = micWanted && rec;
   $('#micLed').className = 'led' + (on ? (S.quiet ? '' : ' hot') : '');
@@ -1052,13 +1057,28 @@ function startMic() {
   micWanted = true;
   rec = new SR(); rec.lang = 'en-AU'; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
   rec.onresult = e => {
-    let interim = '';
+    let interim = '', lastIdx = -1;
     for (let i = e.resultIndex; i < e.results.length; i++) {
       const r = e.results[i];
-      if (r.isFinal) { $('#interim').textContent = ''; heard(r[0].transcript) } else interim += r[0].transcript;
+      if (r.isFinal) {
+        clearTimeout(early.t); $('#interim').textContent = '';
+        const txt = r[0].transcript;
+        if (early.text && Date.now() - early.at < 8000) {
+          // Already acted on this the moment you paused. Only pass on words you added after that.
+          const norm = x => x.toLowerCase().replace(/[^a-z0-9' ]/g, '').replace(/\s+/g, ' ').trim();
+          const a = norm(early.text), b = norm(txt); early.text = '';
+          if (b === a) continue;
+          if (b.startsWith(a)) { const extra = b.slice(a.length).trim(); if (extra.split(' ').length >= 2) heard(extra); continue }
+        }
+        heard(txt);
+      } else { interim += r[0].transcript; lastIdx = i }
     }
     $('#interim').textContent = interim;
     micBackoff = 250;
+    // Don't wait for the browser to decide you've finished (often 1 to 2 seconds): act after a short pause.
+    clearTimeout(early.t);
+    const txt = interim.trim(), idx = lastIdx;
+    if (txt && idx >= 0 && txt.replace(STRIP_NAME, '').trim().length >= 3) early.t = setTimeout(() => { early.text = txt; early.at = Date.now(); $('#interim').textContent = ''; heard(txt) }, 650);
   };
   rec.onerror = e => {
     if (['not-allowed', 'service-not-allowed', 'audio-capture'].includes(e.error)) {
@@ -1067,7 +1087,7 @@ function startMic() {
       setPhase('idle');
     } else if (e.error === 'network') micBackoff = Math.min(8000, micBackoff * 2);
   };
-  rec.onend = () => { if (micWanted && !micPaused && rec) setTimeout(() => { try { rec && rec.start() } catch {} }, micBackoff) };
+  rec.onend = () => { clearTimeout(early.t); if (micWanted && !micPaused && rec) setTimeout(() => { try { rec && rec.start() } catch {} }, micBackoff) };
   try { rec.start() } catch {}
   micUI(); if (!S.busy && !speaking()) setPhase(idlePhase());
 }
@@ -1089,6 +1109,7 @@ function quickCommand(t) {
   if (/^(turn it|volume) down$/.test(l)) { spotify({ do: 'volume', value: Math.max(0, (SP?.volume ?? 50) - 15) }); return true }
   if (/^(lock|lock up|lock (the )?screen|lock it)$/.test(l)) { lock(); return true }
   if (/^(go quiet|stop listening|give me a (minute|second)|be quiet|quiet)$/.test(l)) { goQuiet(); addMsg('sys', 'Quiet. Say "Jarvis" when you need me.'); return true }
+  if (instantAnswer(l)) return true;
   // Music: handled instantly, no AI round trip
   const pm = l.match(/^(?:(?:can you|could you|please|go ahead and|now)\s+)*(?:play|put on|start|chuck on)\s+(?:me\s+)?(?:some\s+)?(.+)$/);
   if (pm && !/^(the )?music$/.test(pm[1])) {
@@ -1097,6 +1118,62 @@ function quickCommand(t) {
     q = q.replace(/^(my|the|a)\s+/, '').replace(/\bplaylist\b/g, ' ').replace(/\s+/g, ' ').trim();
     if (q) { playMusic(q, isPl ? 'playlist' : 'any'); return true }
   }
+  return false;
+}
+// Answers that come straight from what's already loaded, so no waiting on the AI.
+const NUMW = { a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, ten: 10, fifteen: 15, twenty: 20, 'twenty five': 25, thirty: 30, 'forty five': 45, forty: 40, fifty: 50, sixty: 60, ninety: 90 };
+const numOf = w => /^\d+(\.\d+)?$/.test(w) ? Number(w) : NUMW[w];
+function instantAnswer(l) {
+  l = l.replace(/^(hey|ok|okay|so|um|uh|right)\s+/, '').replace(/\s+(please|for me|mate|sir)$/, '').trim();
+  const reply = t => { addMsg('jarvis', t); speak(t); return true };
+  let m;
+  if (/^(what('?s| is) the time|what time is it)( now| right now)?$/.test(l)) return reply('It\'s ' + localTime(new Date()) + ', sir.');
+  if (/^(what('?s| is) (the date|today'?s date)|what day is it( today)?)$/.test(l)) return reply('It\'s ' + new Date().toLocaleDateString('en-AU', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long' }) + '.');
+  // revenue
+  if (!/should|would|could|charge|price|if /.test(l) && (m = l.match(/^(?:how much (?:money )?(?:have i|did i|have we|did we|we've|i've)? ?(?:made|make|done|sold|brought in|earned)|what(?:'?s| is| are) (?:my |our |the )?(?:revenue|sales|numbers)(?: at| looking like| like)?)(?: so far)?(?: (today|this week|this month|this year|for the (?:week|month|year)))?(?: so far)?$/))) {
+    const per = (m[1] || 'this month').replace('for the ', 'this ');
+    const key = { today: 'today', 'this week': 'week', 'this month': 'month', 'this year': 'year' }[per] || 'month';
+    const rev = revenue(), amt = rev[key] || 0, goal = key === 'month' ? D.goals?.monthly : key === 'year' ? D.goals?.yearly : 0;
+    let t = amt ? `${money(amt)} ${per}, sir.` : `Nothing yet ${per}, sir.`;
+    if (goal) t += ` That's ${Math.round(amt / goal * 100)}% of your ${money(goal)} goal, ${money(Math.max(0, goal - amt))} to go.`;
+    return reply(t);
+  }
+  if (/^how (far|close) (am i|are we|off am i|away am i) (from|to|off)? ?(my |the |our )?(monthly |month'?s |yearly |year'?s )?(goal|target)/.test(l)) {
+    const yearly = /year/.test(l), rev = revenue(), amt = yearly ? rev.year : rev.month, goal = yearly ? D.goals?.yearly : D.goals?.monthly;
+    if (!goal) return reply(`You haven't set a ${yearly ? 'yearly' : 'monthly'} goal yet, sir. Just tell me the number.`);
+    return reply(amt >= goal ? `You've hit it, sir. ${money(amt)} against a ${money(goal)} goal.` : `${money(goal - amt)} to go, sir. You're at ${money(amt)} of ${money(goal)}, ${Math.round(amt / goal * 100)}%.`);
+  }
+  // calls
+  const evs = (CAL?.events || []).filter(e => !e.allDay && new Date(e.end || e.start) > new Date());
+  if (/^(when|what)('?s| is) (my )?next (call|meeting|zoom)$|^who('?s| is) (my )?next (call|meeting)$/.test(l)) {
+    if (!CAL?.configured) return false;
+    const e = evs[0]; if (!e) return reply('Nothing booked coming up, sir.');
+    const d = localISO(new Date(e.start)), day = d === localISO() ? 'today' : d === shiftISO(localISO(), 1) ? 'tomorrow' : new Date(e.start).toLocaleDateString('en-AU', { timeZone: TZ, weekday: 'long' });
+    return reply(`${e.title}, ${day} at ${localTime(new Date(e.start))}.`);
+  }
+  if ((m = l.match(/^(?:how many|any|what|do i have any|have i got any) (?:calls|meetings|zooms)(?: do i have| have i got| are| are there| booked| on)?(?: booked)?(?: in)? ?(today|tomorrow|this week)?(?: booked)?$/))) {
+    if (!CAL?.configured) return false;
+    const which = m[1] || 'today', t0 = localISO(), day = e => localISO(new Date(e.start));
+    const list = which === 'today' ? evs.filter(e => day(e) === t0) : which === 'tomorrow' ? evs.filter(e => day(e) === shiftISO(t0, 1)) : evs.filter(e => day(e) <= shiftISO(t0, 7));
+    if (!list.length) return reply(`No calls ${which}, sir.`);
+    const first = list.slice(0, 3).map(e => `${e.title} at ${localTime(new Date(e.start))}`).join(', ');
+    return reply(`${list.length} ${list.length === 1 ? 'call' : 'calls'} ${which}${which === 'this week' ? '' : ': ' + first}.`);
+  }
+  // timers
+  if ((m = l.match(/^(?:set|start|put on|give me)(?: me)? (?:a |an )?(?:timer for )?(\d+|[a-z]+(?: [a-z]+)?)[ -]?(minute|min|hour)s?(?: long)?(?: (focus|work|break|call|timer))?(?: timer)?$/))) {
+    const n = numOf(m[1]); if (!n) return false;
+    const mins = m[2] === 'hour' ? n * 60 : n, label = m[3] && m[3] !== 'timer' ? m[3][0].toUpperCase() + m[3].slice(1) : 'Timer';
+    startTimer(mins, label); return reply(`${label === 'Timer' ? 'Timer' : label + ' timer'} set for ${mins} minutes.`);
+  }
+  if (/^(cancel|stop|kill|clear) (the |my )?timer$/.test(l)) { clearInterval(timer?.iv); timer = null; tickTimer(); return reply('Timer cancelled.') }
+  // apps
+  if ((m = l.match(/^(?:open|pull up|bring up|launch|start|make|create)(?: up)?(?: me)?(?: a| an| my| the)?(?: new| blank)? (excel|spreadsheet|sheet|word|word doc|document|doc|powerpoint|slides|presentation|gmail|email|inbox|calendar|whop|spotify|instagram|dms)(?: (?:sheet|file|doc|page|dashboard))?$/))) {
+    const app = { spreadsheet: 'excel', sheet: 'excel', 'word doc': 'word', document: 'word', doc: 'word', slides: 'powerpoint', presentation: 'powerpoint', email: 'gmail', inbox: 'gmail', dms: 'instagram' }[m[1]] || m[1];
+    const r = openApp(app); return reply(r.ok ? 'Done, sir.' : r.error);
+  }
+  // music extras
+  if (/^(previous|go back|last|back)( song| track| one)?$|^play (the )?(previous|last) (song|track)( again)?$/.test(l)) { spotify({ do: 'previous' }); return true }
+  if (/^shuffle( on| it| (my|the) music| (my|the) playlist)?$/.test(l)) { spotify({ do: 'shuffle' }); return reply('Shuffling.') }
   return false;
 }
 async function playMusic(q, kind) {
@@ -1167,6 +1244,8 @@ async function unlock() {
   loops.push(setInterval(checkUpcoming, 30000));
   loops.push(setInterval(() => document.visibilityState === 'visible' && SP?.linked && loadNP(), 20000));
   loops.push(setInterval(() => pullData(false), 60000));
+  const warm = () => document.visibilityState === 'visible' && fetch('/api/brain', { credentials: 'same-origin' }).catch(() => {});
+  warm(); loops.push(setInterval(warm, 4 * 60000));
   if (ST?.brain) { const d = localISO(); if (new Date(d + 'T00:00:00Z').getUTCDay() === 1 && LS.get('weeklyDone', '') !== d) { LS.set('weeklyDone', d); weekly('Monday weekly report') } else wake(null) }
 }
 
