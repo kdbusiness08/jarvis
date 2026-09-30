@@ -31,7 +31,7 @@ async function gemini(key, b, messages, signal) {
       let res;
       const ac = new AbortController(), stop = () => ac.abort();
       signal?.addEventListener('abort', stop);
-      const timer = setTimeout(stop, 15000); // only for the first answer; the reply itself can stream longer
+      const timer = setTimeout(stop, b.tier === 'quick' ? 7000 : 18000); // if a model stalls, move on; the reply itself can stream longer
       try {
         res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`, {
           method: 'POST', signal: ac.signal, headers: { 'content-type': 'application/json', 'x-goog-api-key': key }, body
