@@ -3,6 +3,7 @@
 **Live at:** https://jarvis-murex-chi.vercel.app
 
 AI brain: Google Gemini (free tier) via GEMINI_API_KEY, or Claude via ANTHROPIC_API_KEY.
+Sales: Whop connected via WHOP_API_KEY.
 
 This gets Jarvis live as your own private website in about 30 to 45 minutes. Do the steps in order. You only do this once.
 
