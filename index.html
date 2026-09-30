@@ -354,7 +354,12 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
     </div>
 
     <h3>Voice</h3>
-    <div class="field"><label for="voiceSel">Voice</label><select id="voiceSel"></select><p id="voiceTip"></p></div>
+    <div class="field"><label for="aiVoiceSel">Jarvis's voice (natural AI voice, free)</label><select id="aiVoiceSel">
+      <option value="Charon">Charon · deep and calm</option><option value="Algieba">Algieba · smooth</option><option value="Sadaltager">Sadaltager · knowledgeable</option>
+      <option value="Iapetus">Iapetus · clear</option><option value="Rasalgethi">Rasalgethi · warm</option><option value="Schedar">Schedar · even</option><option value="Orus">Orus · firm</option>
+      <option value="off">Off · use the browser voice</option></select>
+      <p>Press Test to hear it. If Google's free voice allowance runs out, Jarvis uses the backup voice below until it resets.</p></div>
+    <div class="field"><label for="voiceSel">Backup voice</label><select id="voiceSel"></select><p id="voiceTip"></p></div>
     <div class="field"><span class="flabel">Speaking speed</span>
       <div class="rowf"><input id="rate" type="range" min="0.85" max="1.35" step="0.05" aria-label="Speaking speed"><span class="rv" id="rateV"></span><button class="linkbtn" id="testVoice" type="button">Test</button></div></div>
     <div class="field"><label for="elKey">ElevenLabs key (optional, most human voice)</label><input id="elKey" type="password" placeholder="Leave empty to use the built-in voice" autocomplete="off">
@@ -968,19 +973,29 @@ function pickVoice() {
 }
 const hasNatural = () => allVoices().some(v => /Natural/i.test(v.name));
 const useEL = () => !!P.elKey;
+let aiOffUntil = 0;
+const useAI = () => !P.elKey && P.aiVoice !== false && !!ST?.voice && Date.now() > aiOffUntil;
 const speaking = () => pending > 0;
 function done1() { pending = Math.max(0, pending - 1); if (!pending) { resumeMic(); setPhase(S.busy ? 'thinking' : idlePhase()) } }
 function prep(text) { return text.replace(/\$([\d,.]+)\s?k\b/gi, '$1 thousand dollars').replace(/\$([\d,.]+)/g, '$1 dollars').replace(/\s+/g, ' ').trim() }
 function speak(text) {
   text = prep(text || ''); if (P.muted || !text) return;
   pending++; pauseMic(); setPhase('speaking');
-  if (useEL()) { elQ.push(fetchTTS(text)); if (!elPlaying) playNext(); return }
+  if (useEL() || useAI()) { const p = useEL() ? fetchTTS(text) : fetchAIVoice(text); p.catch(() => {}); elQ.push({ text, p }); if (!elPlaying) playNext(); return }
   if (!synth) { done1(); return }
+  synth.speak(utter(text, done1));
+}
+function utter(text, end) {
   const u = new SpeechSynthesisUtterance(text);
   const v = pickVoice(); if (v) { u.voice = v; u.lang = v.lang }
   u.rate = P.rate || 1.05; u.pitch = 1;
-  u.onend = u.onerror = done1;
-  synth.speak(u);
+  u.onend = u.onerror = end;
+  return u;
+}
+async function fetchAIVoice(text) {
+  const r = await fetch('/api/voice', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, voice: P.aiVoiceName || undefined }) });
+  if (!r.ok) { if (r.status === 429) aiOffUntil = Date.now() + 15 * 60e3; else if (r.status === 501) aiOffUntil = Date.now() + 864e5; throw new Error('voice ' + r.status) }
+  return URL.createObjectURL(await r.blob());
 }
 async function fetchTTS(text) {
   const id = P.elVoice || 'JBFqnCBsd6RMkjVDRZzb';
@@ -996,10 +1011,15 @@ async function playNext() {
   if (!p) { elPlaying = false; return }
   elPlaying = true;
   try {
-    const url = await p; if (my !== gen) return;
-    await new Promise(res => { curDone = res; curAudio = new Audio(url); curAudio.onended = curAudio.onerror = res; curAudio.play().catch(res) });
+    const url = await p.p; if (my !== gen) return;
+    await new Promise(res => { curDone = res; curAudio = new Audio(url); curAudio.rate = 1; curAudio.onended = curAudio.onerror = res; curAudio.play().catch(res) });
     URL.revokeObjectURL(url);
-  } catch (e) { if (my === gen) toast('Premium voice failed (' + e.message + '). Check the ElevenLabs key.') }
+  } catch (e) {
+    if (my !== gen) return;
+    if (P.elKey) toast('Premium voice failed (' + e.message + '). Check the ElevenLabs key.');
+    // Natural voice unavailable for a moment: say it with the built-in voice so nothing is lost.
+    if (synth) await new Promise(res => { curDone = res; synth.speak(utter(p.text, res)) });
+  }
   if (my !== gen) return;
   done1(); playNext();
 }
@@ -1180,12 +1200,14 @@ $('#rate').oninput = rateUI;
 function openSettings() {
   fillVoices(); $('#rate').value = P.rate || 1.05; rateUI();
   $('#elKey').value = P.elKey || ''; $('#elVoice').value = P.elVoice || '';
+  $('#aiVoiceSel').value = P.aiVoice === false ? 'off' : (P.aiVoiceName || 'Charon');
   $('#goalM').value = D.goals?.monthly || ''; $('#goalY').value = D.goals?.yearly || '';
   document.querySelectorAll('input[name=listen]').forEach(r => r.checked = r.value === (P.listen || 'name'));
   $('#modal').hidden = false; renderConns();
 }
 function readSettings() {
   P.voice = $('#voiceSel').value; P.rate = +$('#rate').value; P.elKey = $('#elKey').value.trim(); P.elVoice = $('#elVoice').value.trim();
+  const av = $('#aiVoiceSel').value; P.aiVoice = av !== 'off'; if (av !== 'off') P.aiVoiceName = av; aiOffUntil = 0;
   P.listen = document.querySelector('input[name=listen]:checked')?.value || 'name';
 }
 function closeSettings() {
