@@ -39,18 +39,25 @@ async function gemini(key, b, messages, signal) {
   let buf = '';
   const out = new ReadableStream({
     async pull(ctrl) {
-      const { value, done } = await reader.read();
-      if (done) { ctrl.close(); return }
-      buf += dec.decode(value, { stream: true });
-      let i;
-      while ((i = buf.indexOf('\n')) >= 0) {
-        const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
-        if (!line.startsWith('data:')) continue;
-        try {
-          const d = JSON.parse(line.slice(5));
-          const text = (d.candidates?.[0]?.content?.parts || []).filter(p => !p.thought).map(p => p.text || '').join('');
-          if (text) ctrl.enqueue(delta(text));
-        } catch {}
+      // Keep reading until we have something to send, and close as soon as Gemini says it's finished.
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) { ctrl.close(); return }
+        buf += dec.decode(value, { stream: true });
+        let i, sent = false, finished = false;
+        while ((i = buf.indexOf('\n')) >= 0) {
+          const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+          if (!line.startsWith('data:')) continue;
+          try {
+            const d = JSON.parse(line.slice(5));
+            const c = d.candidates?.[0];
+            const text = (c?.content?.parts || []).filter(p => !p.thought).map(p => p.text || '').join('');
+            if (text) { ctrl.enqueue(delta(text)); sent = true }
+            if (c?.finishReason) finished = true;
+          } catch {}
+        }
+        if (finished) { ctrl.close(); reader.cancel().catch(() => {}); return }
+        if (sent) return;
       }
     },
     cancel() { reader.cancel() }
