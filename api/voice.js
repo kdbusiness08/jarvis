@@ -29,7 +29,7 @@ export async function POST(req) {
   const prefix = styles[b.style] ?? styles[process.env.JARVIS_VOICE_STYLE] ?? styles.short;
   const body = JSON.stringify({
     contents: [{ role: 'user', parts: [{ text: prefix + text }] }],
-    generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } } }
+    generationConfig: { responseModalities: ['AUDIO'], speechConfig: { ...(b.lang ? { languageCode: String(b.lang).slice(0, 8) } : {}), voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } } }
   });
   let last = '', limited = false;
   const order = [...new Set([MODELS.includes(b.model) ? b.model : null, process.env.JARVIS_VOICE_MODEL, ...MODELS].filter(Boolean))];
@@ -46,7 +46,8 @@ export async function POST(req) {
     if (!r.ok) {
       try { last = (await r.json()).error.message } catch { last = 'status ' + r.status }
       if (r.status === 429) { limited = true; tired.set(model, Date.now() + (/per.?day|daily|PerDay/i.test(last) ? 3600e3 : 60e3)) }
-      else if (r.status === 404 || r.status === 400 || r.status === 403) tired.set(model, Date.now() + 6 * 3600e3);
+      else if (r.status === 404 || r.status === 403 || (r.status === 400 && !b.lang)) tired.set(model, Date.now() + 6 * 3600e3);
+      else if (r.status === 400) return json({ error: last }, 400);
       else tired.set(model, Date.now() + 20e3);
       continue;
     }
