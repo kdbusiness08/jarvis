@@ -1080,7 +1080,7 @@ async function unlock() {
   await Promise.all([loadWhop(), loadCal(), loadNP()]);
   const qs = new URLSearchParams(location.search);
   if (qs.get('linked')) { const res = qs.get('result'); toast(res === 'ok' ? (qs.get('linked') === 'spotify' ? 'Spotify connected' : 'Google Calendar connected') : res); history.replaceState(null, '', '/') }
-  if (ST && !ST.brain) addMsg('sys', 'The AI key isn\'t set yet. Add ANTHROPIC_API_KEY in Vercel (see the setup guide).');
+  if (ST && !ST.brain) addMsg('sys', 'The AI key isn\'t set yet. Add GEMINI_API_KEY (free) in Vercel.');
   else if (ST && !ST.store) addMsg('sys', 'Cloud memory isn\'t connected, so records only last until the server restarts. Connect Upstash Redis in Vercel (see the setup guide).');
   if (synth && allVoices().length && !hasNatural() && !useEL()) addMsg('sys', 'Tip: open Jarvis in Microsoft Edge for a far more human voice.');
   loops.push(setInterval(() => document.visibilityState === 'visible' && loadWhop(), 60000));
@@ -1109,7 +1109,7 @@ function connRow(label, sub, state, action) {
 async function renderConns() {
   await loadStatus(); const c = $('#conns'); c.replaceChildren();
   if (!ST) { c.append(el('div', 'conn', 'Could not read connection status.')); return }
-  c.append(connRow('AI brain', ST.brain ? 'Connected' : 'Add ANTHROPIC_API_KEY in Vercel', ST.brain));
+  c.append(connRow('AI brain', ST.brain ? 'Connected' : 'Add GEMINI_API_KEY in Vercel', ST.brain));
   c.append(connRow('Cloud memory', ST.store ? 'Syncing across your devices' : 'Connect Upstash Redis in Vercel', ST.store || 'warn'));
   c.append(connRow('Whop', ST.whop ? (W?.error ? 'Error: ' + W.error : 'Live sales and revenue') : 'Add WHOP_API_KEY in Vercel', ST.whop && !W?.error));
   c.append(connRow('Spotify', !ST.spotify.configured ? 'Add Spotify keys in Vercel' : ST.spotify.linked ? 'Connected' : 'Ready to connect', ST.spotify.linked, ST.spotify.configured ? [ST.spotify.linked ? 'Reconnect' : 'Connect', '/api/spotify?action=login'] : null));
