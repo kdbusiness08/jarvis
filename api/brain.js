@@ -10,8 +10,8 @@ const delta = text => enc.encode('data: ' + JSON.stringify({ type: 'content_bloc
 const tired = globalThis.__jarvisTired || (globalThis.__jarvisTired = new Map()); // model -> retry-after time
 async function gemini(key, b, messages, signal) {
   // Several free models, each with its own daily allowance. If one is used up, fall through to the next.
-  const quick = ['gemini-3.1-flash-lite', 'gemini-3-flash-preview', 'gemini-3.5-flash-lite', 'gemini-3.5-flash'];
-  const deep = ['gemini-3-flash-preview', 'gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'];
+  const quick = ['gemini-3.1-flash-lite', 'gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-3-flash-preview'];
+  const deep = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3-flash-preview'];
   const pref = b.tier === 'quick' ? process.env.GEMINI_FAST_MODEL : process.env.GEMINI_MODEL;
   const chain = [...new Set([pref, ...(b.tier === 'quick' ? quick : deep)].filter(Boolean))];
   const contents = [];
@@ -21,19 +21,32 @@ async function gemini(key, b, messages, signal) {
     if (last && last.role === role) last.parts[0].text += '\n\n' + m.content; else contents.push({ role, parts: [{ text: m.content }] });
   }
   const body = JSON.stringify({ systemInstruction: { parts: [{ text: String(b.system || '').slice(0, 200000) }] }, contents, generationConfig: { maxOutputTokens: b.tier === 'quick' ? 1200 : 3000, temperature: 0.8 } });
-  let r = null, lastMsg = '', limited = false;
-  for (const model of chain) {
-    if ((tired.get(model) || 0) > Date.now()) { limited = true; continue }
-    r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`, {
-      method: 'POST', signal, headers: { 'content-type': 'application/json', 'x-goog-api-key': key }, body
-    });
-    if (r.ok) break;
-    try { lastMsg = (await r.json()).error.message } catch { lastMsg = 'Gemini answered ' + r.status }
-    if (r.status === 429) { limited = true; tired.set(model, Date.now() + (/per.?day|daily|PerDay/i.test(lastMsg) ? 3600e3 : 60e3)); r = null; continue }
-    if (r.status === 404 || r.status === 400) { tired.set(model, Date.now() + 6 * 3600e3); r = null; continue }
-    return json({ error: lastMsg }, 502);
+  let r = null, lastMsg = '', limited = false, busy = false;
+  // Two passes: if every model is busy ("high demand"), wait a moment and go round once more.
+  for (let pass = 0; pass < 2 && !r; pass++) {
+    if (pass) { if (!busy) break; await new Promise(res => setTimeout(res, 1500)) }
+    for (const model of chain) {
+      if (!pass && (tired.get(model) || 0) > Date.now()) { limited = true; continue }
+      if (pass && (tired.get(model) || 0) > Date.now() + 60e3) continue; // skip only the ones out for the day
+      let res;
+      const ac = new AbortController(), stop = () => ac.abort();
+      signal?.addEventListener('abort', stop);
+      const timer = setTimeout(stop, 15000); // only for the first answer; the reply itself can stream longer
+      try {
+        res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`, {
+          method: 'POST', signal: ac.signal, headers: { 'content-type': 'application/json', 'x-goog-api-key': key }, body
+        });
+      } catch (e) { if (signal?.aborted) throw e; busy = true; lastMsg = 'timed out'; continue }
+      finally { clearTimeout(timer) }
+      if (res.ok) { r = res; break }
+      try { lastMsg = (await res.json()).error.message } catch { lastMsg = 'Gemini answered ' + res.status }
+      if (res.status === 429) { limited = true; tired.set(model, Date.now() + (/per.?day|daily|PerDay/i.test(lastMsg) ? 3600e3 : 60e3)); continue }
+      if (res.status === 404 || res.status === 400) { tired.set(model, Date.now() + 6 * 3600e3); continue }
+      if (res.status >= 500) { busy = true; tired.set(model, Date.now() + 30e3); continue } // "high demand": try another model
+      return json({ error: lastMsg }, 502);
+    }
   }
-  if (!r) return json({ error: limited ? "I've used up today's free AI allowance, sir. Music, pause and skip still work, and the rest resets within the day." : lastMsg }, limited ? 429 : 502);
+  if (!r) return json({ error: busy ? "Google's AI is swamped at the moment, sir. Give me a few seconds and ask again." : limited ? "I've used up today's free AI allowance, sir. Music, pause and skip still work, and the rest resets within the day." : lastMsg }, limited && !busy ? 429 : 503);
   // Re-shape Gemini's stream into the same events the page already understands.
   const reader = r.body.getReader(), dec = new TextDecoder();
   let buf = '';
