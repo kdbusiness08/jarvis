@@ -1,0 +1,30 @@
+{
+  "name": "Jarvis",
+  "short_name": "Jarvis",
+  "description": "Rise Agency command centre",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#01040a",
+  "theme_color": "#01040a",
+  "icons": [
+    {
+      "src": "/api/icon?s=192",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/api/icon?s=512",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/api/icon?s=512",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
