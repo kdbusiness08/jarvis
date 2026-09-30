@@ -8,6 +8,7 @@ export async function GET(req) {
   const env = process.env;
   return json({
     brain: !!(env.GEMINI_API_KEY || env.ANTHROPIC_API_KEY),
+    voice: !!env.GEMINI_API_KEY,
     store: storeOk, storeError, tz: TZ(),
     whop: !!env.WHOP_API_KEY,
     spotify: { configured: !!(env.SPOTIFY_CLIENT_ID && env.SPOTIFY_CLIENT_SECRET), linked: spotifyLinked },
