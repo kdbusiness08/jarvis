@@ -26,7 +26,7 @@ export async function POST(req) {
   if (!text) return json({ error: 'Bad request' }, 400);
   const voice = VOICES.has(b.voice) ? b.voice : (process.env.JARVIS_VOICE || 'Charon');
   const styles = { none: '', short: 'Say in a calm, refined British accent: ', butler: 'Say like a calm, polished English butler: ' };
-  const prefix = styles[b.style] ?? styles[process.env.JARVIS_VOICE_STYLE] ?? styles.short;
+  const prefix = styles[b.style] ?? styles[process.env.JARVIS_VOICE_STYLE] ?? styles.none; // the newer voice models read any instruction aloud, so send the words only
   const body = JSON.stringify({
     contents: [{ role: 'user', parts: [{ text: prefix + text }] }],
     generationConfig: { responseModalities: ['AUDIO'], speechConfig: { ...(b.lang ? { languageCode: String(b.lang).slice(0, 8) } : {}), voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } } }
