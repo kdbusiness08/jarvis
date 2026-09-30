@@ -1,0 +1,1120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#01040a">
+<title>Jarvis</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: holographic deck — revenue + pipeline screen | projected globe + comms | music, schedule, tasks screen. Single dark theme by design. */
+:root{
+  --bg:#01040a; --holo:#3b8cff; --holo-hi:#bcd6ff; --line:rgba(59,140,255,.30); --line-lo:rgba(59,140,255,.12);
+  --fill:rgba(40,110,230,.07); --fg:#eaf1ff; --muted:#8aa3c7; --faint:#4d6283;
+  --amber:#ffb54a; --good:#5fe0a8; --bad:#ff7f7f;
+  --f-ui:"Geist","Segoe UI Variable","Segoe UI",system-ui,sans-serif;
+  --f-mono:"Geist Mono",ui-monospace,Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0}
+body{color:var(--fg);font:14.5px/1.55 var(--f-ui);overflow:hidden;-webkit-font-smoothing:antialiased;background:var(--bg)}
+#bgfx{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
+.app{position:relative;z-index:1;height:100%;display:grid;grid-template-rows:auto 1fr;padding:env(safe-area-inset-top,0px) 24px env(safe-area-inset-bottom,0px);max-width:1720px;margin:0 auto}
+button{font:inherit;color:inherit;cursor:pointer}
+a{color:var(--holo-hi)}
+:focus-visible{outline:2px solid var(--holo-hi);outline-offset:2px}
+
+/* header */
+header{display:flex;align-items:center;justify-content:space-between;gap:14px;padding-block:14px;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:12px}
+.brand b{font-family:var(--f-mono);font-weight:500;font-size:16px;letter-spacing:.42em;color:var(--holo-hi);text-shadow:0 0 14px rgba(59,140,255,.9)}
+.brand span{color:var(--muted);font-size:12px;letter-spacing:.14em;text-transform:uppercase;border-left:1px solid var(--line);padding-left:12px}
+.right{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 12px;border-radius:6px;background:var(--fill);border:1px solid var(--line-lo);color:var(--muted);font-family:var(--f-mono);font-size:11.5px;letter-spacing:.05em;white-space:nowrap}
+button.chip:hover{border-color:var(--line)}
+.chip .led{width:7px;height:7px;border-radius:50%;background:var(--faint)}
+.chip .led.on{background:var(--good);box-shadow:0 0 8px var(--good)}
+.chip .led.hot{background:var(--bad);box-shadow:0 0 8px var(--bad);animation:pulse 1.4s infinite}
+.chip.timer{color:var(--amber);border-color:rgba(255,181,74,.35)}
+.time{color:var(--holo-hi);font-variant-numeric:tabular-nums}
+.ibtn{width:32px;height:32px;border-radius:6px;display:grid;place-items:center;background:var(--fill);border:1px solid var(--line-lo);transition:all .2s}
+.ibtn:hover{border-color:var(--line);box-shadow:0 0 14px rgba(59,140,255,.35)}
+.ibtn svg{width:16px;height:16px;stroke:var(--holo-hi);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+
+/* deck */
+main{display:grid;grid-template-columns:minmax(280px,1fr) minmax(400px,1.3fr) minmax(280px,1fr);gap:26px;min-height:0;padding:4px 14px 20px;perspective:1600px}
+.col{min-height:0;display:flex;flex-direction:column;gap:14px;transform-style:preserve-3d;transition:transform .6s cubic-bezier(.2,.7,.2,1)}
+.col.l{transform:rotateY(var(--ry-l,7deg));transform-origin:right center}
+.col.r{transform:rotateY(var(--ry-r,-7deg));transform-origin:left center}
+.card{position:relative;min-height:0;display:flex;flex-direction:column;border-radius:10px;
+  background:linear-gradient(180deg,rgba(50,120,255,.10),rgba(10,40,110,.045) 60%,rgba(40,100,220,.06));
+  border:1px solid var(--line);
+  box-shadow:0 0 34px -8px rgba(40,110,255,.4),inset 0 0 40px rgba(59,140,255,.06);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);animation:materialize .9s ease-out both}
+.card::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(150,190,255,.03) 0 1px,transparent 1px 4px)}
+.card::after{content:"";position:absolute;left:12%;right:12%;top:-1px;height:1px;pointer-events:none;background:linear-gradient(90deg,transparent,var(--holo-hi),transparent);box-shadow:0 0 10px var(--holo)}
+@keyframes materialize{0%{opacity:.35;filter:brightness(2) blur(1px);clip-path:inset(0 0 100% 0)}60%{clip-path:inset(0 0 0 0)}100%{opacity:1;filter:none}}
+.card-h{display:flex;align-items:center;gap:8px;padding:13px 16px 8px;position:relative}
+.card-h h2{margin:0;font-family:var(--f-mono);font-size:11px;font-weight:500;letter-spacing:.24em;text-transform:uppercase;color:var(--holo-hi);text-shadow:0 0 10px rgba(59,140,255,.8);white-space:nowrap}
+.card-h .rule{flex:1;height:1px;background:linear-gradient(90deg,var(--line),transparent)}
+.card-h .sub{font-family:var(--f-mono);color:var(--muted);font-size:11px;letter-spacing:.06em;white-space:nowrap}
+
+/* revenue */
+.goals{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px 12px 6px;position:relative}
+.goal{display:flex;align-items:center;gap:12px;padding:6px}
+.ringwrap{position:relative;width:78px;height:78px;flex:none}
+.ringwrap svg{width:100%;height:100%;transform:rotate(-90deg)}
+.ringwrap .pct{position:absolute;inset:0;display:grid;place-items:center;font-family:var(--f-mono);font-size:13px;color:var(--fg)}
+.goal .k{font-size:11.5px;color:var(--muted)}
+.goal .v{font-size:22px;font-weight:300;font-variant-numeric:tabular-nums;color:var(--amber);text-shadow:0 0 14px rgba(255,181,74,.35);line-height:1.2}
+.goal .of{font-family:var(--f-mono);font-size:11px;color:var(--faint)}
+.minis{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--line-lo);position:relative}
+.mini{padding:9px 14px 12px}
+.mini+.mini{border-left:1px solid var(--line-lo)}
+.mini .k{font-size:11px;color:var(--muted)}
+.mini .v{font-size:18px;font-weight:300;font-variant-numeric:tabular-nums}
+.whopnote{font-size:11.5px;color:var(--faint);padding:0 16px 10px;position:relative}
+
+/* tabs + rows */
+.seg{display:flex;margin:2px 14px 6px;border:1px solid var(--line-lo);border-radius:6px;overflow:hidden;position:relative}
+.seg button{flex:1;border:0;background:none;padding:7px 2px;font-family:var(--f-mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);transition:all .2s}
+.seg button+button{border-left:1px solid var(--line-lo)}
+.seg button[aria-selected="true"]{background:rgba(59,140,255,.16);color:var(--holo-hi);text-shadow:0 0 8px rgba(59,140,255,.9);box-shadow:inset 0 -2px 0 var(--holo)}
+.seg .n{opacity:.6;margin-left:3px}
+.rows{overflow-y:auto;flex:1;padding:2px 8px 10px;position:relative;scrollbar-width:thin;scrollbar-color:rgba(59,140,255,.3) transparent}
+.row{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:9px 8px;border-bottom:1px solid rgba(59,140,255,.08);transition:background .15s}
+.row:last-child{border-bottom:0}
+.row:hover{background:rgba(59,140,255,.06)}
+.av{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-family:var(--f-mono);font-size:11px;color:var(--holo-hi);border:1px solid var(--line);box-shadow:0 0 10px rgba(59,140,255,.3),inset 0 0 8px rgba(59,140,255,.25);background:rgba(59,140,255,.06)}
+.av.money{color:var(--amber);border-color:rgba(255,181,74,.4);box-shadow:0 0 10px rgba(255,181,74,.25),inset 0 0 8px rgba(255,181,74,.2)}
+.av.time{font-size:10px;width:44px;border-radius:5px}
+.main{min-width:0}
+.nm{font-size:14px;overflow-wrap:anywhere}
+.dt{color:var(--muted);font-size:12.5px;overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.meta{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.line{display:flex;align-items:center;gap:6px}
+.amt{font-family:var(--f-mono);font-size:12.5px;color:var(--amber)}
+.tag{font-family:var(--f-mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;padding:1px 7px;border-radius:3px;white-space:nowrap;border:1px solid currentColor;color:var(--muted)}
+.t-good{color:var(--good)} .t-warn{color:var(--amber)} .t-bad{color:var(--bad)} .t-mid{color:var(--holo-hi)}
+.due{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.06em;color:var(--muted);text-transform:uppercase} .due.over{color:var(--bad)} .due.today{color:var(--amber)}
+.x{border:0;background:none;color:var(--faint);opacity:0;width:22px;height:22px;border-radius:50%;font-size:15px;line-height:1;transition:opacity .15s}
+.row:hover .x,.x:focus-visible{opacity:1}.x:hover{color:var(--bad)}
+.chk{appearance:none;width:18px;height:18px;border-radius:50%;border:1px solid var(--line);margin:0;cursor:pointer;display:grid;place-content:center;box-shadow:inset 0 0 6px rgba(59,140,255,.25)}
+.chk:checked{background:var(--holo);border-color:var(--holo);box-shadow:0 0 12px var(--holo)}
+.chk:checked::after{content:"";width:7px;height:4px;border:1.8px solid var(--bg);border-top:0;border-right:0;transform:rotate(-45deg) translate(1px,-1px)}
+.row.done .nm{color:var(--faint);text-decoration:line-through}
+.row.past{opacity:.45}
+.empty{padding:12px 10px 16px;color:var(--muted);font-size:13px}
+.empty q{color:var(--fg);quotes:"“" "”"}
+.linkbtn{display:inline-flex;align-items:center;height:28px;padding:0 12px;border-radius:5px;border:1px solid var(--line);background:rgba(59,140,255,.1);color:var(--holo-hi);font-family:var(--f-mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;text-decoration:none;white-space:nowrap}
+.linkbtn:hover{box-shadow:0 0 12px rgba(59,140,255,.45)}
+
+/* music */
+.np{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:4px 14px 13px;position:relative}
+.art{width:42px;height:42px;border-radius:6px;background:rgba(59,140,255,.12) center/cover;border:1px solid var(--line-lo)}
+.np .t{font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.np .a{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ctrls{display:flex;gap:4px}
+.ctrls button{width:30px;height:30px;border-radius:50%;border:1px solid var(--line-lo);background:rgba(59,140,255,.06);display:grid;place-items:center}
+.ctrls svg{width:13px;height:13px;fill:var(--holo-hi)}
+.ctrls button:hover{box-shadow:0 0 10px rgba(59,140,255,.5)}
+
+/* center */
+.center{display:flex;flex-direction:column;align-items:center;min-height:0;gap:4px}
+.sphere{position:relative;width:min(100%,44vh,430px);aspect-ratio:1;flex:none;max-width:100%;margin-top:-10px}
+#orb{width:100%;height:100%;display:block}
+.state{display:flex;align-items:center;gap:8px;font-family:var(--f-mono);color:var(--holo-hi);font-size:11px;letter-spacing:.32em;text-transform:uppercase;height:18px;margin-top:-8px;text-shadow:0 0 10px rgba(59,140,255,.9)}
+.state i{width:6px;height:6px;border-radius:50%;background:var(--holo);box-shadow:0 0 8px var(--holo)}
+.state.live i{animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.25}}
+.actions{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;justify-content:center}
+.wake{height:36px;padding:0 20px;border-radius:6px;border:1px solid var(--holo);color:var(--holo-hi);font-family:var(--f-mono);font-size:11.5px;letter-spacing:.2em;text-transform:uppercase;background:rgba(59,140,255,.12);box-shadow:0 0 22px rgba(59,140,255,.35),inset 0 0 14px rgba(59,140,255,.2);transition:all .25s}
+.wake:hover{background:rgba(59,140,255,.22);box-shadow:0 0 34px rgba(59,140,255,.6)}
+.wake.ghost{border-color:var(--line);box-shadow:none;background:var(--fill)}
+.convo{width:100%;margin-top:12px;flex:1;min-height:0}
+.log{flex:1;overflow-y:auto;padding:14px 18px 6px;display:flex;flex-direction:column;gap:12px;min-height:100px;position:relative;scrollbar-width:thin;scrollbar-color:rgba(59,140,255,.3) transparent}
+.msg{max-width:90%;white-space:pre-wrap;overflow-wrap:anywhere}
+.msg.you{align-self:flex-end;text-align:right;color:var(--muted);font-size:13.5px}
+.msg.you::before{content:"KADE";display:block;font-family:var(--f-mono);font-size:9.5px;letter-spacing:.24em;color:var(--faint)}
+.msg.jarvis{font-size:15.5px;font-weight:300;line-height:1.6;text-shadow:0 0 12px rgba(59,140,255,.35);border-left:1px solid var(--holo);padding-left:12px}
+.msg.sys{align-self:center;text-align:center;color:var(--muted);font-family:var(--f-mono);font-size:11.5px;max-width:96%}
+.msg.sale{align-self:center;color:var(--amber);font-family:var(--f-mono);font-size:12px;letter-spacing:.06em;border:1px solid rgba(255,181,74,.35);padding:6px 12px;border-radius:6px;box-shadow:0 0 18px rgba(255,181,74,.2)}
+.interim{color:var(--muted);font-size:13px;padding:0 20px;min-height:20px;position:relative;font-style:italic}
+.composer{display:flex;align-items:center;gap:8px;margin:6px 12px 12px;padding:5px;border-radius:8px;background:rgba(1,6,16,.6);border:1px solid var(--line);position:relative}
+.composer:focus-within{box-shadow:0 0 18px rgba(59,140,255,.35)}
+.composer input{flex:1;min-width:0;background:none;border:0;color:var(--fg);font:inherit;padding:8px 6px;outline:none}
+.composer input::placeholder{color:var(--faint)}
+.rb{width:36px;height:36px;border-radius:6px;border:1px solid var(--line-lo);display:grid;place-items:center;flex:none;background:rgba(59,140,255,.08)}
+.rb svg{width:17px;height:17px;stroke:var(--holo-hi);fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.rb:hover{box-shadow:0 0 14px rgba(59,140,255,.45)}
+.rb.send{background:rgba(59,140,255,.22);border-color:var(--holo)}
+
+/* draft */
+.draft{position:fixed;right:24px;bottom:24px;width:min(460px,calc(100% - 32px));max-height:70vh;z-index:6;background:linear-gradient(180deg,rgba(14,36,80,.96),rgba(4,12,30,.97))}
+.draft pre{margin:0;padding:4px 16px 16px;white-space:pre-wrap;font:14px/1.6 var(--f-ui);overflow:auto;position:relative}
+
+/* lock */
+.lock{position:fixed;inset:0;z-index:30;display:grid;place-items:center;padding:16px;background:radial-gradient(ellipse at 50% 40%,rgba(10,30,70,.75),rgba(1,4,10,.96) 70%);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+.lockbox{width:min(360px,100%);display:flex;flex-direction:column;align-items:center;gap:14px;text-align:center}
+.lockbox .ring{width:120px;height:120px;border-radius:50%;border:1px solid var(--line);box-shadow:0 0 40px rgba(59,140,255,.35),inset 0 0 30px rgba(59,140,255,.25);display:grid;place-items:center;position:relative}
+.lockbox .ring::before{content:"";position:absolute;inset:10px;border-radius:50%;border:2px solid transparent;border-top-color:var(--holo);border-right-color:var(--holo);animation:spin 3s linear infinite;filter:drop-shadow(0 0 6px var(--holo))}
+.lockbox .ring i{width:34px;height:34px;border-radius:50%;background:radial-gradient(circle,#fff,var(--holo-hi) 30%,rgba(59,140,255,.2) 70%,transparent);box-shadow:0 0 30px var(--holo)}
+@keyframes spin{to{transform:rotate(360deg)}}
+.lockbox h1{margin:6px 0 0;font-family:var(--f-mono);font-weight:500;font-size:22px;letter-spacing:.5em;color:var(--holo-hi);text-shadow:0 0 18px var(--holo);padding-left:.5em}
+.lockbox p{margin:0;color:var(--muted);font-size:13px}
+.lockbox form{display:flex;gap:8px;width:100%;margin-top:6px}
+.lockbox input{flex:1;min-width:0;height:44px;border-radius:8px;border:1px solid var(--line);background:rgba(1,6,16,.7);color:var(--fg);padding:0 14px;font:16px var(--f-mono);letter-spacing:.2em;text-align:center;outline:none}
+.lockbox input:focus{box-shadow:0 0 20px rgba(59,140,255,.4)}
+.lockbox button{height:44px;padding:0 18px;border-radius:8px;border:1px solid var(--holo);background:rgba(59,140,255,.2);color:var(--holo-hi);font-family:var(--f-mono);letter-spacing:.16em;font-size:12px}
+.lockerr{color:var(--bad)!important;min-height:20px}
+.shake{animation:shake .35s}
+@keyframes shake{25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
+
+/* settings */
+.modal{position:fixed;inset:0;z-index:20;background:rgba(1,4,10,.65);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);display:grid;place-items:center;padding:16px}
+.sheet{width:min(560px,100%);max-height:90vh;overflow:auto;padding:22px;gap:16px;background:linear-gradient(180deg,rgba(14,36,80,.96),rgba(4,12,30,.97))}
+.sheet h2{margin:0;font-family:var(--f-mono);font-size:13px;font-weight:500;letter-spacing:.26em;text-transform:uppercase;color:var(--holo-hi);position:relative}
+.sheet h3{margin:6px 0 0;font-family:var(--f-mono);font-size:10.5px;font-weight:500;letter-spacing:.22em;text-transform:uppercase;color:var(--muted);position:relative}
+.field{display:flex;flex-direction:column;gap:7px;position:relative}
+.field>label,.flabel{font-size:12.5px;color:var(--muted)}
+.field input[type=text],.field input[type=password],.field input[type=number],.field select{height:38px;background:rgba(1,8,20,.7);border:1px solid var(--line);color:var(--fg);padding:0 12px;border-radius:6px;font:inherit;min-width:0}
+.field p,.note{margin:0;font-size:12.5px;color:var(--faint);line-height:1.5;position:relative}
+.field p b,.note b{color:var(--muted);font-weight:500}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px;position:relative}
+.rowf{display:flex;gap:10px;align-items:center;position:relative;flex-wrap:wrap}
+.radio{display:flex;gap:8px;flex-wrap:wrap;position:relative}
+.radio label{flex:1;min-width:160px;border:1px solid var(--line-lo);border-radius:6px;padding:9px 11px;cursor:pointer;font-size:13px;display:flex;gap:8px;align-items:flex-start}
+.radio label:has(input:checked){border-color:var(--holo);background:rgba(59,140,255,.1)}
+.radio small{display:block;color:var(--faint);font-size:11.5px}
+input[type=range]{flex:1;appearance:none;height:3px;border-radius:3px;background:rgba(59,140,255,.3);min-width:120px}
+input[type=range]::-webkit-slider-thumb{appearance:none;width:14px;height:14px;border-radius:50%;background:var(--holo-hi);box-shadow:0 0 10px var(--holo)}
+input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--holo-hi);border:0}
+.rv{font-family:var(--f-mono);font-size:12px;color:var(--muted);width:44px;text-align:right}
+.conns{display:flex;flex-direction:column;border:1px solid var(--line-lo);border-radius:8px;position:relative}
+.conn{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:10px 12px}
+.conn+.conn{border-top:1px solid var(--line-lo)}
+.conn .led{width:8px;height:8px;border-radius:50%;background:var(--faint)}
+.conn .led.on{background:var(--good);box-shadow:0 0 8px var(--good)} .conn .led.warn{background:var(--amber)}
+.conn small{display:block;color:var(--faint);font-size:11.5px}
+.primary{height:36px;padding:0 20px;border-radius:6px;border:1px solid var(--holo);background:rgba(59,140,255,.22);color:var(--holo-hi);font-family:var(--f-mono);font-size:12px;letter-spacing:.18em;text-transform:uppercase}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:rgba(6,20,48,.96);border:1px solid var(--line);padding:8px 16px;font-family:var(--f-mono);font-size:12px;z-index:40;border-radius:6px;display:flex;align-items:center;gap:12px;box-shadow:0 0 24px rgba(59,140,255,.35);max-width:calc(100% - 32px)}
+.toast button{border:0;background:none;color:var(--holo-hi);padding:0;font-family:inherit;letter-spacing:.1em}
+
+@media (max-width:1080px){
+  body{overflow:auto}
+  .app{height:auto;min-height:100%;padding-inline:16px}
+  main{grid-template-columns:1fr;perspective:none;padding-inline:0}
+  .col.l,.col.r{transform:none}
+  .center{order:-1}
+  .sphere{width:min(86vw,360px)}
+  .log{max-height:50vh}
+  .rows{max-height:50vh}
+  .two{grid-template-columns:1fr}
+}
+@media (max-width:520px){ .goals{grid-template-columns:1fr} .brand span{display:none} }
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<canvas id="bgfx" aria-hidden="true"></canvas>
+<div class="app">
+  <header>
+    <div class="brand"><b>JARVIS</b><span>Rise Agency</span></div>
+    <div class="right">
+      <span class="chip"><span class="time" id="clock">--:--</span><span id="dateStr"></span></span>
+      <span class="chip timer" id="timerChip" hidden></span>
+      <button class="chip" id="micChip" title="Pause or resume listening"><span class="led" id="micLed"></span><span id="micTxt">Mic off</span></button>
+      <button class="ibtn" id="muteBtn" aria-pressed="false" aria-label="Mute voice"><svg viewBox="0 0 24 24" id="spk"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg></button>
+      <button class="ibtn" id="setBtn" aria-label="Settings"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>
+      <button class="ibtn" id="lockBtn" aria-label="Lock"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></button>
+    </div>
+  </header>
+
+  <main>
+    <section class="col l" aria-label="Revenue and pipeline">
+      <div class="card">
+        <div class="card-h"><h2>Revenue</h2><span class="rule"></span><span class="sub" id="revSrc">Loading</span></div>
+        <div class="goals">
+          <div class="goal">
+            <div class="ringwrap"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="42" fill="none" stroke="rgba(59,140,255,.15)" stroke-width="7"/><circle id="ringM" cx="50" cy="50" r="42" fill="none" stroke="#ffb54a" stroke-width="7" stroke-linecap="round" stroke-dasharray="0 264" style="filter:drop-shadow(0 0 4px rgba(255,181,74,.8))"/></svg><span class="pct" id="pctM">–</span></div>
+            <div><div class="k" id="lblM">This month</div><div class="v" id="revM">$0</div><div class="of" id="ofM">No goal set</div></div>
+          </div>
+          <div class="goal">
+            <div class="ringwrap"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="42" fill="none" stroke="rgba(59,140,255,.15)" stroke-width="7"/><circle id="ringY" cx="50" cy="50" r="42" fill="none" stroke="#3b8cff" stroke-width="7" stroke-linecap="round" stroke-dasharray="0 264" style="filter:drop-shadow(0 0 4px rgba(59,140,255,.9))"/></svg><span class="pct" id="pctY">–</span></div>
+            <div><div class="k" id="lblY">This year</div><div class="v" id="revY">$0</div><div class="of" id="ofY">No goal set</div></div>
+          </div>
+        </div>
+        <div class="minis">
+          <div class="mini"><div class="k">Today</div><div class="v" id="revT">$0</div></div>
+          <div class="mini"><div class="k">This week</div><div class="v" id="revW">$0</div></div>
+          <div class="mini"><div class="k">Sales this month</div><div class="v" id="cntM">0</div></div>
+        </div>
+      </div>
+      <div class="card" style="flex:1">
+        <div class="card-h"><h2>Pipeline</h2><span class="rule"></span><span class="sub" id="pipeSub"></span></div>
+        <div class="seg" role="tablist">
+          <button role="tab" aria-selected="true" data-k="lead">Leads<span class="n" id="n-lead"></span></button>
+          <button role="tab" aria-selected="false" data-k="client">Clients<span class="n" id="n-client"></span></button>
+          <button role="tab" aria-selected="false" data-k="sale">Sales<span class="n" id="n-sale"></span></button>
+          <button role="tab" aria-selected="false" data-k="note">Notes<span class="n" id="n-note"></span></button>
+        </div>
+        <div class="rows" id="pipeRows"></div>
+      </div>
+    </section>
+
+    <section class="center" aria-label="Jarvis">
+      <div class="sphere"><canvas id="orb" aria-hidden="true"></canvas></div>
+      <div class="state" id="stateBox" role="status"><i></i><span id="status">Standing by</span></div>
+      <div class="actions"><button class="wake" id="wakeBtn">Brief me</button><button class="wake ghost" id="stopBtn">Stop talking</button></div>
+      <div class="card convo">
+        <div class="log" id="log" aria-live="polite"></div>
+        <div class="interim" id="interim"></div>
+        <form class="composer" id="bar">
+          <input id="input" autocomplete="off" placeholder="Talk, or type to Jarvis">
+          <button class="rb send" type="submit" aria-label="Send"><svg viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
+        </form>
+      </div>
+    </section>
+
+    <section class="col r" aria-label="Today">
+      <div class="card">
+        <div class="card-h"><h2>Now playing</h2><span class="rule"></span><span class="sub" id="npDev"></span></div>
+        <div class="np" id="np"></div>
+      </div>
+      <div class="card" style="flex:1.1">
+        <div class="card-h"><h2>Schedule</h2><span class="rule"></span><span class="sub" id="calSub"></span></div>
+        <div class="rows" id="calRows"></div>
+      </div>
+      <div class="card" style="flex:1">
+        <div class="card-h"><h2>Tasks</h2><span class="rule"></span><span class="sub" id="taskCount"></span></div>
+        <div class="rows" id="taskRows"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="card draft" id="draftBox" hidden>
+  <div class="card-h"><h2 id="draftTitle">Draft</h2><span class="rule"></span><button class="linkbtn" id="copyBtn">Copy</button><button class="linkbtn" id="closeDraft">Close</button></div>
+  <pre id="draftBody"></pre>
+</div>
+
+<div class="lock" id="lock">
+  <div class="lockbox" id="lockbox">
+    <div class="ring"><i></i></div>
+    <h1>JARVIS</h1>
+    <p>Rise Agency · Private</p>
+    <form id="lockForm" autocomplete="off">
+      <input id="pass" type="password" placeholder="Passcode" aria-label="Passcode" autocomplete="current-password" autofocus>
+      <button type="submit">Unlock</button>
+    </form>
+    <p class="lockerr" id="lockErr"></p>
+  </div>
+</div>
+
+<div class="modal" id="modal" hidden>
+  <div class="card sheet" role="dialog" aria-labelledby="setTitle">
+    <h2 id="setTitle">Settings</h2>
+
+    <h3>Goals</h3>
+    <div class="two">
+      <div class="field"><label for="goalM">Monthly revenue goal ($)</label><input id="goalM" type="number" min="0" step="500" placeholder="e.g. 50000"></div>
+      <div class="field"><label for="goalY">Yearly revenue goal ($)</label><input id="goalY" type="number" min="0" step="1000" placeholder="e.g. 600000"></div>
+    </div>
+
+    <h3>Listening</h3>
+    <div class="radio" role="radiogroup">
+      <label><input type="radio" name="listen" value="name"><span>Answer when I say "Jarvis"<small>Then keeps chatting for 45 seconds without the name. Safe for sales calls.</small></span></label>
+      <label><input type="radio" name="listen" value="always"><span>Answer everything I say<small>Like a person in the room. Say "Jarvis, go quiet" to pause.</small></span></label>
+    </div>
+
+    <h3>Voice</h3>
+    <div class="field"><label for="voiceSel">Voice</label><select id="voiceSel"></select><p id="voiceTip"></p></div>
+    <div class="field"><span class="flabel">Speaking speed</span>
+      <div class="rowf"><input id="rate" type="range" min="0.85" max="1.35" step="0.05" aria-label="Speaking speed"><span class="rv" id="rateV"></span><button class="linkbtn" id="testVoice" type="button">Test</button></div></div>
+    <div class="field"><label for="elKey">ElevenLabs key (optional, most human voice)</label><input id="elKey" type="password" placeholder="Leave empty to use the built-in voice" autocomplete="off">
+      <p>Saved on this device only. The voice ID below defaults to <b>George</b>, a calm British voice.</p></div>
+    <div class="field"><label for="elVoice">ElevenLabs voice ID</label><input id="elVoice" type="text" placeholder="JBFqnCBsd6RMkjVDRZzb"></div>
+
+    <h3>Connections</h3>
+    <div class="conns" id="conns"></div>
+    <p class="note">For "open a spreadsheet" by voice, allow pop-ups for this site once: click the icon at the right end of the address bar when Jarvis first tries, then choose <b>Always allow</b>.</p>
+
+    <div class="rowf" style="justify-content:flex-end"><button class="primary" id="closeSet" type="button">Done</button></div>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const TZ = 'Australia/Brisbane';
+const LS = { get(k, d) { try { const v = localStorage.getItem('jarvis.' + k); return v == null ? d : JSON.parse(v) } catch { return d } }, set(k, v) { try { localStorage.setItem('jarvis.' + k, JSON.stringify(v)) } catch {} } };
+
+/* ---------- prefs (this device) ---------- */
+const P = Object.assign({ rate: 1.05, listen: 'name', muted: false }, LS.get('prefs', {}));
+const savePrefs = () => LS.set('prefs', P);
+
+/* ---------- state ---------- */
+let D = { records: [], goals: { monthly: 0, yearly: 0 } };       // synced memory
+let W = null, CAL = null, SP = null, ST = null;                 // whop, calendar, spotify, status
+const S = { unlocked: false, history: [], tab: 'lead', busy: false, convoUntil: 0, phase: 'idle', quiet: false, flare: 0 };
+let ctl = null;
+
+/* ---------- helpers ---------- */
+function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e }
+const money = n => '$' + Math.round(n || 0).toLocaleString('en-US');
+const moneyShort = n => n >= 1e6 ? '$' + (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + 'M' : n >= 1e4 ? '$' + Math.round(n / 1e3) + 'k' : money(n);
+function uid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36) }
+function localISO(d = new Date()) { return new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(d) }
+function localTime(d) { return new Intl.DateTimeFormat('en-AU', { timeZone: TZ, hour: 'numeric', minute: '2-digit' }).format(d).replace(' ', '').toLowerCase() }
+let toastT;
+function toast(msg, undo) {
+  const t = $('#toast'); t.replaceChildren(el('span', null, msg));
+  if (undo) { const b = el('button', null, 'UNDO'); b.onclick = () => { undo(); t.hidden = true }; t.append(b) }
+  t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, 5000);
+}
+async function api(path, opts = {}) {
+  const r = await fetch(path, { credentials: 'same-origin', ...opts, headers: { 'content-type': 'application/json', ...(opts.headers || {}) } });
+  if (r.status === 401) { lock(); throw { code: 'locked', message: 'Locked' } }
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw { code: body.code || 'error', message: body.error || ('Error ' + r.status), status: r.status };
+  return body;
+}
+
+/* ---------- memory (synced through the server) ---------- */
+let saveT = null, dirty = false;
+function persist() { dirty = true; LS.set('data', D); clearTimeout(saveT); saveT = setTimeout(pushData, 700) }
+async function pushData() {
+  try { await api('/api/data', { method: 'PUT', body: JSON.stringify(D) }); dirty = false }
+  catch (e) { if (e.code !== 'locked') toast('Could not save to the cloud: ' + e.message) }
+}
+async function pullData(first) {
+  if (dirty) return;
+  try {
+    const r = await api('/api/data');
+    if (r.data && Array.isArray(r.data.records)) { D = Object.assign({ goals: { monthly: 0, yearly: 0 } }, r.data); LS.set('data', D) }
+    else if (first) { const local = LS.get('data', null); if (local && local.records?.length) { D = local; persist() } }
+    render();
+  } catch (e) { if (first) { const local = LS.get('data', null); if (local) D = local; render() } }
+}
+const store = {
+  add(rec) { const r = clean(rec); r.id = uid(); r.createdAt = Date.now(); if (r.kind === 'sale' && !r.date) r.date = localISO(); D.records.push(r); persist(); render(); return r },
+  update(id, patch) { const r = D.records.find(x => x.id === id); if (!r) return false; Object.assign(r, clean(patch)); persist(); render(); return true },
+  remove(id) { const i = D.records.findIndex(x => x.id === id); if (i < 0) return null; const [r] = D.records.splice(i, 1); persist(); render(); return r },
+  restore(r) { D.records.push(r); persist(); render() }
+};
+const FIELDS = ['kind', 'name', 'detail', 'status', 'amount', 'due', 'date', 'source', 'program', 'phone'];
+function clean(o) { const out = {}; for (const k of FIELDS) if (o[k] !== undefined && o[k] !== null && o[k] !== '') out[k] = k === 'amount' ? Number(String(o[k]).replace(/[^0-9.]/g, '')) || 0 : String(o[k]).slice(0, 2000); return out }
+
+/* ---------- revenue ---------- */
+function periods() {
+  const t = localISO(); const [y, m] = t.split('-');
+  const d = new Date(t + 'T00:00:00Z'); const dow = (d.getUTCDay() + 6) % 7; d.setUTCDate(d.getUTCDate() - dow);
+  return { today: t, week: d.toISOString().slice(0, 10), month: `${y}-${m}-01`, year: `${y}-01-01` };
+}
+function revenue() {
+  const p = periods(), manual = { today: 0, week: 0, month: 0, year: 0, countMonth: 0 };
+  for (const r of D.records) if (r.kind === 'sale' && r.amount) {
+    const d = r.date || localISO(new Date(r.createdAt || Date.now()));
+    if (d >= p.year) manual.year += r.amount; if (d >= p.month) { manual.month += r.amount; manual.countMonth++ }
+    if (d >= p.week) manual.week += r.amount; if (d >= p.today) manual.today += r.amount;
+  }
+  const w = W && W.configured && !W.error ? W : {};
+  return { today: (w.today || 0) + manual.today, week: (w.week || 0) + manual.week, month: (w.month || 0) + manual.month, year: (w.year || 0) + manual.year, countMonth: (w.countMonth || 0) + manual.countMonth, manual };
+}
+
+/* ---------- rendering ---------- */
+const TONE = { active: 'good', won: 'good', completed: 'mid', booked: 'mid', contacted: 'mid', new: 'warn', 'no-show': 'bad', lost: 'bad', refunded: 'bad' };
+function initials(n) { return String(n).trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase() || '·' }
+function dueInfo(d) { const t = localISO(); if (d < t) return ['over', 'Overdue']; if (d === t) return ['today', 'Today']; return ['', new Date(d + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })] }
+function row(r) {
+  const task = r.kind === 'task';
+  const w = el('div', 'row' + (r.status === 'done' ? ' done' : ''));
+  if (task) {
+    const c = el('input', 'chk'); c.type = 'checkbox'; c.checked = r.status === 'done'; c.setAttribute('aria-label', 'Done: ' + r.name);
+    c.onchange = () => store.update(r.id, { status: c.checked ? 'done' : 'open' }); w.append(c);
+  } else w.append(el('div', 'av' + (r.kind === 'sale' ? ' money' : ''), r.kind === 'sale' ? '$' : r.kind === 'note' ? '✦' : initials(r.name)));
+  const m = el('div', 'main'); m.append(el('div', 'nm', r.name));
+  const det = [r.detail, r.program, r.source && 'via ' + r.source].filter(Boolean).join(' · '); if (det) m.append(el('div', 'dt', det)); w.append(m);
+  const meta = el('div', 'meta'), line = el('div', 'line');
+  if (r.status && !task) line.append(el('span', 'tag t-' + (TONE[r.status] || 'mid'), r.status));
+  const x = el('button', 'x', '×'); x.setAttribute('aria-label', 'Remove ' + r.name);
+  x.onclick = () => { const old = store.remove(r.id); if (old) toast('Removed ' + r.name, () => store.restore(old)) };
+  line.append(x); meta.append(line);
+  if (r.amount) meta.append(el('span', 'amt', money(r.amount)));
+  if (r.due && r.status !== 'done' && r.status !== 'won' && r.status !== 'lost') { const [c, t] = dueInfo(r.due); meta.append(el('span', 'due ' + c, (r.kind === 'lead' ? 'Follow up ' : '') + t)) }
+  if (r.kind === 'sale' && r.date) meta.append(el('span', 'due', new Date(r.date + 'T00:00:00').toLocaleDateString('en-AU', { day: 'numeric', month: 'short' })));
+  w.append(meta); return w;
+}
+const EMPTY = {
+  lead: 'No leads yet. Try <q>Jarvis, new lead, Marcus from Instagram, wants the mentorship, follow up Thursday.</q>',
+  client: 'No clients yet. Try <q>Jarvis, add Sarah as a client, she bought the five thousand dollar mentorship.</q>',
+  sale: 'Whop sales count automatically. Log anything paid outside Whop here: <q>Jarvis, log a three thousand dollar sale from Tom, paid by bank transfer.</q>',
+  note: 'Try <q>Jarvis, take a note: the best closing time this week was 7pm.</q>',
+  task: 'Nothing on. Try <q>Jarvis, remind me to post the testimonial video tomorrow.</q>'
+};
+function fill(box, list, kind) {
+  box.replaceChildren();
+  if (!list.length) { const e = el('div', 'empty'); e.innerHTML = EMPTY[kind]; box.append(e); return }
+  list.forEach(r => box.append(row(r)));
+}
+function setRing(id, pctId, ofId, val, goal) {
+  const c = 2 * Math.PI * 42, f = goal > 0 ? Math.min(1, val / goal) : 0;
+  $(id).setAttribute('stroke-dasharray', (f * c).toFixed(1) + ' ' + c.toFixed(1)); $(id).style.opacity = f > 0 ? 1 : 0;
+  $(pctId).textContent = goal > 0 ? Math.round(val / goal * 100) + '%' : '–';
+  $(ofId).textContent = goal > 0 ? 'of ' + moneyShort(goal) + ' goal' : 'Set a goal in settings';
+}
+function render() {
+  const R = D.records, by = k => R.filter(r => r.kind === k);
+  const rev = revenue(), g = D.goals || {};
+  $('#lblM').textContent = new Intl.DateTimeFormat('en-AU', { timeZone: TZ, month: 'long' }).format(new Date());
+  $('#lblY').textContent = new Intl.DateTimeFormat('en-AU', { timeZone: TZ, year: 'numeric' }).format(new Date());
+  $('#revM').textContent = money(rev.month); $('#revY').textContent = money(rev.year);
+  $('#revT').textContent = money(rev.today); $('#revW').textContent = money(rev.week); $('#cntM').textContent = rev.countMonth;
+  setRing('#ringM', '#pctM', '#ofM', rev.month, +g.monthly || 0); setRing('#ringY', '#pctY', '#ofY', rev.year, +g.yearly || 0);
+  $('#revSrc').textContent = W && W.configured ? (W.error ? 'Whop error' : 'Live from Whop') : W ? 'Manual sales' : 'Loading';
+  for (const k of ['lead', 'client', 'sale', 'note']) $('#n-' + k).textContent = by(k).length || '';
+  const openLeads = by('lead').filter(l => !['won', 'lost'].includes(l.status));
+  $('#pipeSub').textContent = openLeads.length + ' open · ' + by('lead').filter(l => l.status === 'booked').length + ' booked';
+  const newest = (a, b) => (b.createdAt || 0) - (a.createdAt || 0);
+  let list = by(S.tab);
+  if (S.tab === 'lead') list.sort((a, b) => (['won', 'lost'].includes(a.status) - ['won', 'lost'].includes(b.status)) || (a.due || '9').localeCompare(b.due || '9'));
+  else if (S.tab === 'sale') list.sort((a, b) => (b.date || '').localeCompare(a.date || '') || newest(a, b));
+  else list.sort(newest);
+  fill($('#pipeRows'), list, S.tab);
+  const tasks = by('task').sort((a, b) => (a.status === 'done') - (b.status === 'done') || (a.due || '9').localeCompare(b.due || '9'));
+  fill($('#taskRows'), tasks, 'task');
+  const open = tasks.filter(t => t.status !== 'done').length; $('#taskCount').textContent = open ? open + ' open' : '';
+}
+document.querySelectorAll('.seg button').forEach(b => b.onclick = () => { S.tab = b.dataset.k; document.querySelectorAll('.seg button').forEach(x => x.setAttribute('aria-selected', x === b)); render() });
+
+function renderCal() {
+  const box = $('#calRows'); box.replaceChildren();
+  if (!CAL || !CAL.configured) { const e = el('div', 'empty'); e.innerHTML = 'Google Calendar isn\'t set up yet. Follow the setup guide, then connect it in Settings.'; box.append(e); $('#calSub').textContent = ''; return }
+  if (!CAL.linked) { const e = el('div', 'empty'); e.append('Connect your Google Calendar so Jarvis can read and book your calls. '); const a = el('a', 'linkbtn', 'Connect'); a.href = '/api/google?action=login'; e.append(a); box.append(e); return }
+  if (CAL.error) { box.append(el('div', 'empty', 'Calendar error: ' + CAL.error)); return }
+  const today = localISO(), tomorrow = localISO(new Date(Date.now() + 86400000));
+  const evs = (CAL.events || []).filter(e => { const d = e.allDay ? e.start : localISO(new Date(e.start)); return d === today || d === tomorrow });
+  $('#calSub').textContent = evs.filter(e => (e.allDay ? e.start : localISO(new Date(e.start))) === today).length + ' today';
+  if (!evs.length) { const e = el('div', 'empty'); e.innerHTML = 'Clear today and tomorrow. Try <q>Jarvis, book a call with Marcus Friday at 2pm.</q>'; box.append(e); return }
+  let lastDay = '';
+  for (const e of evs) {
+    const d = e.allDay ? e.start : localISO(new Date(e.start));
+    if (d !== lastDay) { lastDay = d; const h = el('div', 'empty', d === today ? 'Today' : 'Tomorrow'); h.style.cssText = 'padding:8px 8px 2px;font-family:var(--f-mono);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase'; box.append(h) }
+    const past = !e.allDay && new Date(e.end) < new Date();
+    const w = el('div', 'row' + (past ? ' past' : ''));
+    w.append(el('div', 'av time', e.allDay ? 'ALL' : localTime(new Date(e.start))));
+    const m = el('div', 'main'); m.append(el('div', 'nm', e.title)); if (e.location) m.append(el('div', 'dt', e.location)); w.append(m);
+    const meta = el('div', 'meta'); if (e.link) { const a = el('a', 'linkbtn', 'Join'); a.href = e.link; a.target = '_blank'; a.rel = 'noopener'; meta.append(a) } w.append(meta);
+    box.append(w);
+  }
+}
+const ICON = { prev: 'M6 5h2v14H6zM20 5v14l-10-7z', play: 'M7 4v16l13-8z', pause: 'M6 4h4v16H6zM14 4h4v16h-4z', next: 'M16 5h2v14h-2zM4 5v14l10-7z' };
+function svgIcon(d) { const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); s.setAttribute('viewBox', '0 0 24 24'); const p = document.createElementNS('http://www.w3.org/2000/svg', 'path'); p.setAttribute('d', d); s.append(p); return s }
+function renderNP() {
+  const box = $('#np'); box.replaceChildren(); $('#npDev').textContent = '';
+  if (!SP || !SP.configured) { box.style.display = 'block'; box.append(el('div', 'empty', 'Spotify isn\'t set up yet. See the setup guide.')); return }
+  if (!SP.linked) { box.style.display = 'block'; const e = el('div', 'empty', 'Connect Spotify so Jarvis can play your music. '); const a = el('a', 'linkbtn', 'Connect'); a.href = '/api/spotify?action=login'; e.append(a); box.append(e); return }
+  box.style.display = '';
+  const art = el('div', 'art'); if (SP.art) art.style.backgroundImage = `url("${SP.art}")`; box.append(art);
+  const m = el('div', 'main'); m.style.minWidth = '0';
+  m.append(el('div', 't', SP.track || 'Nothing playing')); m.append(el('div', 'a', SP.track ? SP.artist : 'Say "Jarvis, play my focus playlist"')); box.append(m);
+  $('#npDev').textContent = SP.device ? SP.device : '';
+  const c = el('div', 'ctrls');
+  const mk = (icon, label, fn) => { const b = el('button'); b.setAttribute('aria-label', label); b.append(svgIcon(ICON[icon])); b.onclick = fn; c.append(b) };
+  mk('prev', 'Previous', () => spotify({ do: 'previous' }));
+  mk(SP.playing ? 'pause' : 'play', SP.playing ? 'Pause' : 'Play', () => spotify({ do: SP.playing ? 'pause' : 'resume' }));
+  mk('next', 'Next', () => spotify({ do: 'next' }));
+  box.append(c);
+}
+
+/* ---------- log ---------- */
+function addMsg(who, text) { const m = el('div', 'msg ' + who, text); $('#log').append(m); while ($('#log').children.length > 80) $('#log').firstChild.remove(); $('#log').scrollTop = 1e9; return m }
+function addLinkCard(label, url) {
+  const m = el('div', 'msg sys'); m.append('Your browser blocked the new tab. '); const a = el('a', 'linkbtn', label); a.href = url; a.target = '_blank'; a.rel = 'noopener'; m.append(a);
+  $('#log').append(m); $('#log').scrollTop = 1e9;
+}
+
+/* ---------- integrations ---------- */
+async function loadStatus() { try { ST = await api('/api/status') } catch (e) { ST = null } }
+async function loadWhop(fresh) {
+  try { W = await api('/api/whop' + (fresh ? '?fresh=1' : '')) } catch (e) { if (e.code === 'locked') return; W = { configured: true, error: e.message } }
+  render(); announceSales();
+}
+async function loadCal() { try { CAL = await api('/api/google?days=8') } catch (e) { if (e.code === 'locked') return; CAL = { configured: true, linked: true, error: e.message } } renderCal() }
+async function loadNP() { try { SP = await api('/api/spotify') } catch (e) { if (e.code === 'locked') return; SP = SP || { configured: true, linked: true } } renderNP() }
+async function spotify(body) {
+  try { const r = await api('/api/spotify', { method: 'POST', body: JSON.stringify(body) }); if (r.now) { SP = { ...SP, ...r.now, configured: true, linked: true } } setTimeout(loadNP, 1200); renderNP(); return { ok: true, said: r.said } }
+  catch (e) { return { ok: false, error: e.code === 'not_linked' ? 'Spotify isn\'t connected yet, sir. It\'s in Settings.' : e.code === 'not_configured' ? 'Spotify isn\'t set up yet, sir.' : e.message } }
+}
+async function calendar(body) {
+  try { const r = await api('/api/google', { method: 'POST', body: JSON.stringify(body) }); loadCal(); return { ok: true, said: r.said } }
+  catch (e) { return { ok: false, error: e.code === 'not_linked' ? 'Your Google Calendar isn\'t connected yet, sir.' : e.code === 'not_configured' ? 'Google Calendar isn\'t set up yet, sir.' : e.message } }
+}
+
+// Announce new Whop sales out loud
+function announceSales() {
+  if (!W || !W.recent) return;
+  let seen = LS.get('seenPayments', null);
+  if (!seen) { LS.set('seenPayments', W.recent.map(p => p.id)); return }
+  const fresh = W.recent.filter(p => !seen.includes(p.id) && Date.now() - new Date(p.at) < 36 * 3600 * 1000);
+  LS.set('seenPayments', [...new Set([...W.recent.map(p => p.id), ...seen])].slice(0, 200));
+  if (!fresh.length) return;
+  S.flare = performance.now();
+  const rev = revenue(), g = D.goals || {};
+  const total = fresh.reduce((a, p) => a + p.amount, 0);
+  const who = fresh.length === 1 ? `${fresh[0].name.split(' ')[0]} just bought ${fresh[0].product} for ${money(fresh[0].amount)}` : `${fresh.length} new sales just came in, ${money(total)} in total`;
+  const goalLine = g.monthly ? ` That puts ${$('#lblM').textContent} at ${money(rev.month)}, ${Math.round(rev.month / g.monthly * 100)} percent of target.` : ` That brings the month to ${money(rev.month)}.`;
+  addMsg('sale', '◆ NEW SALE · ' + who.toUpperCase());
+  speak('Sir, a new sale. ' + who + '.' + goalLine);
+}
+
+// Heads-up ten minutes before calendar events
+const warned = new Set(LS.get('warned', []));
+function checkUpcoming() {
+  if (!CAL || !CAL.events) return;
+  const now = Date.now();
+  for (const e of CAL.events) {
+    if (e.allDay || warned.has(e.id)) continue;
+    const mins = (new Date(e.start) - now) / 60000;
+    if (mins > 0 && mins <= 10) { warned.add(e.id); LS.set('warned', [...warned].slice(-100)); const t = `Sir, ${e.title} starts in ${Math.round(mins)} minutes.`; addMsg('jarvis', t); speak(t) }
+  }
+}
+
+/* ---------- timers ---------- */
+let timer = null;
+function startTimer(minutes, label) {
+  clearInterval(timer?.iv); const end = Date.now() + minutes * 60000;
+  timer = { end, label: label || 'Timer', iv: setInterval(tickTimer, 1000) }; tickTimer();
+}
+function tickTimer() {
+  if (!timer) { $('#timerChip').hidden = true; return }
+  const left = timer.end - Date.now();
+  if (left <= 0) { clearInterval(timer.iv); const l = timer.label; timer = null; $('#timerChip').hidden = true; const t = `Sir, your ${l.toLowerCase()} is up.`; addMsg('jarvis', t); speak(t); return }
+  const m = Math.floor(left / 60000), s = Math.floor(left / 1000) % 60;
+  $('#timerChip').hidden = false; $('#timerChip').textContent = timer.label.toUpperCase() + ' ' + m + ':' + String(s).padStart(2, '0');
+}
+
+/* ---------- opening apps ---------- */
+const APPS = { excel: ['https://excel.new', 'Open Excel'], word: ['https://word.new', 'Open Word'], powerpoint: ['https://powerpoint.new', 'Open PowerPoint'], gmail: ['https://mail.google.com', 'Open Gmail'], calendar: ['https://calendar.google.com', 'Open Calendar'], whop: ['https://whop.com/dashboard', 'Open Whop'], spotify: ['https://open.spotify.com', 'Open Spotify'], instagram: ['https://www.instagram.com/direct/inbox/', 'Open Instagram'] };
+function openApp(app, url) {
+  let target = APPS[app] || null;
+  if (!target && /^https:\/\//i.test(url || '')) target = [url, 'Open link'];
+  if (!target) return { ok: false, error: 'I don\'t know how to open that one yet, sir.' };
+  const w = window.open(target[0], '_blank');
+  if (w) { try { w.opener = null } catch {} } else addLinkCard(target[1], target[0]);
+  return { ok: true };
+}
+
+/* ---------- the brain ---------- */
+function rules() {
+  const when = new Intl.DateTimeFormat('en-AU', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: 'numeric', minute: '2-digit' }).format(new Date());
+  const data = D.records.slice(-300).map(r => { const o = { id: r.id }; for (const k of FIELDS) if (r[k] != null && r[k] !== '') o[k] = r[k]; return o });
+  const rev = revenue();
+  const cal = CAL && CAL.events ? CAL.events.slice(0, 30).map(e => ({ id: e.id, title: e.title, start: e.allDay ? e.start : new Date(e.start).toLocaleString('en-AU', { timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }), allDay: e.allDay || undefined })) : (CAL && CAL.linked === false ? 'not connected' : 'not set up');
+  const whop = W && W.configured ? (W.error ? 'error: ' + W.error : { recentSales: (W.recent || []).slice(0, 6).map(p => ({ name: p.name, product: p.product, amount: p.amount, at: new Date(p.at).toLocaleString('en-AU', { timeZone: TZ, day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }) })) }) : 'not set up';
+  const music = !SP || !SP.configured ? 'not set up' : !SP.linked ? 'not connected' : SP.track ? { playing: SP.playing, track: SP.track, artist: SP.artist, device: SP.device, volume: SP.volume } : 'nothing playing';
+  return `You are JARVIS, Kade's AI chief of staff and right-hand man. You speak out loud through a voice interface in his private command centre.
+
+KADE'S BUSINESS: RISE AGENCY
+Kade runs Rise Agency. People working in high-ticket sales buy into Rise's mentorship/service so they can build a strong sales portfolio and land roles with good commission instead of bad offers. Kade spent 1.5 years stuck in bad-commission roles, which is why he built Rise. His revenue is simply how many people he sells on the Rise mentorship/service. Sales through Whop are tracked automatically. His pipeline: leads (people interested) -> booked sales calls -> clients (people who bought).
+
+YOUR PERSONALITY
+Dry, calm, witty British butler with a sharp business mind. Address him as "sir" now and then, not every sentence. Loyal, quick, understated humour, never gushing. Expert in high-ticket sales, closing, objection handling, DM and call scripts, content that drives leads, offers and pricing, and running a lean agency. Push him toward his revenue goals with specific, practical moves.
+
+HOW TO REPLY
+- Your words are spoken aloud. Talk like a person: natural rhythm, contractions, short sentences. Keep spoken replies to 1-3 sentences unless he asks for more. No markdown, bullets, emoji or URLs in spoken text.
+- For written pieces (DMs, emails, scripts, content, plans, offers), give ONE short spoken sentence, then put the piece inside [[DRAFT title="short title"]] ... [[/DRAFT]]. It's shown on screen, not read aloud.
+- To DO things, end your reply with an actions block. Your spoken sentence should confirm what you're doing. Never read the block aloud or mention ids.
+[[ACTIONS]][ ...one or more actions... ][[/ACTIONS]]
+Actions:
+  Records (kinds: lead, client, sale, task, note):
+   {"op":"add","kind":"lead","name":"Marcus","detail":"Wants the mentorship, closer at a SaaS company","source":"Instagram","status":"new","due":"2026-10-02"}
+     lead status: new|contacted|booked|no-show|won|lost (due = follow-up date)
+     client status: active|completed|refunded, with amount and program
+     sale: ONLY for payments outside Whop (Whop sales are automatic): {"op":"add","kind":"sale","name":"Tom","amount":3000,"date":"YYYY-MM-DD","detail":"bank transfer"}
+     task status: open|done, due date. note: name + detail.
+   {"op":"update","id":"<id>", ...changed fields}   {"op":"delete","id":"<id>"}
+   When a lead buys, update the lead to won AND add a client.
+  Goals: {"op":"goal","monthly":50000} and/or "yearly":600000
+  Music: {"op":"spotify","do":"play","query":"focus","kind":"playlist|track|artist|any"}; also "do":"pause"|"resume"|"next"|"previous"|"shuffle"; volume: {"op":"spotify","do":"volume","value":60}. "Play my X playlist" -> kind playlist.
+  Calendar: {"op":"calendar","do":"create","title":"Sales call - Marcus","start":"YYYY-MM-DDTHH:MM","minutes":45,"description":"..."}; {"op":"calendar","do":"move","id":"<event id>","start":"...","minutes":30}; {"op":"calendar","do":"delete","id":"<event id>"}. Times are Brisbane local.
+  Open apps: {"op":"open","app":"excel|word|powerpoint|gmail|calendar|whop|spotify|instagram"} or {"op":"open","url":"https://..."}. "New spreadsheet" -> excel.
+  Timer: {"op":"timer","minutes":25,"label":"Focus"}  cancel: {"op":"timer","minutes":0}
+  Listening: {"op":"quiet"} when he says go quiet / stop listening / give me a minute.
+- Resolve relative dates ("Friday", "tomorrow at 2") from TODAY. If he gives no call length, use 30 minutes.
+- Only use ids that appear in the data below. If something isn't connected, tell him plainly and that it's in Settings.
+- Answer questions from the data. Don't invent numbers.
+
+TODAY: ${when} (Brisbane)
+REVENUE (USD, Whop + manual): today ${money(rev.today)}, this week ${money(rev.week)}, this month ${money(rev.month)} from ${rev.countMonth} sales, this year ${money(rev.year)}
+GOALS: monthly ${D.goals?.monthly ? money(D.goals.monthly) : 'not set'}, yearly ${D.goals?.yearly ? money(D.goals.yearly) : 'not set'}
+WHOP: ${JSON.stringify(whop)}
+CALENDAR (next 8 days): ${JSON.stringify(cal)}
+MUSIC: ${JSON.stringify(music)}
+TIMER: ${timer ? timer.label + ', ' + Math.ceil((timer.end - Date.now()) / 60000) + ' min left' : 'none'}
+RECORDS: ${JSON.stringify(data)}`;
+}
+
+function parse(t, final) {
+  let draft = null, actions = [];
+  const dm = t.match(/\[\[DRAFT(?:\s+title="([^"]*)")?\]\]([\s\S]*?)(\[\[\/DRAFT\]\]|$)/);
+  if (dm) draft = { title: dm[1] || 'Draft', body: dm[2].replace(/\[\[?\/?D?R?A?F?T?$/, '').trim() };
+  const am = t.match(/\[\[ACTIONS\]\]([\s\S]*?)(\[\[\/ACTIONS\]\]|$)/);
+  if (am && final) { try { actions = JSON.parse(am[1].trim()) } catch { const m2 = am[1].match(/\[[\s\S]*\]/); try { actions = m2 ? JSON.parse(m2[0]) : [] } catch { actions = [] } } }
+  if (!Array.isArray(actions)) actions = [actions];
+  let say = t.replace(/\[\[DRAFT[\s\S]*?(\[\[\/DRAFT\]\]|$)/g, ' ').replace(/\[\[ACTIONS\]\][\s\S]*$/, '');
+  const cut = say.indexOf('['); if (cut >= 0 && !final) say = say.slice(0, cut);
+  say = say.replace(/\[[^\]]*\]?/g, '').replace(/[*_#`>]/g, '').replace(/[ \t]+/g, ' ').trim();
+  return { say, draft, actions };
+}
+
+async function brain(messages, tier, onText, signal) {
+  const r = await fetch('/api/brain', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ system: rules(), messages, tier }), signal });
+  if (r.status === 401) { lock(); throw { code: 'locked' } }
+  if (!r.ok) { let m = ''; try { m = (await r.json()).error } catch {} throw { code: 'api', message: m || ('Error ' + r.status) } }
+  const rd = r.body.getReader(), dec = new TextDecoder(); let buf = '', text = '';
+  for (;;) {
+    const { value, done } = await rd.read(); if (done) break;
+    buf += dec.decode(value, { stream: true });
+    let i;
+    while ((i = buf.indexOf('\n\n')) >= 0) {
+      const ev = buf.slice(0, i); buf = buf.slice(i + 2);
+      const line = ev.split('\n').find(l => l.startsWith('data:')); if (!line) continue;
+      let d; try { d = JSON.parse(line.slice(5)) } catch { continue }
+      if (d.type === 'content_block_delta' && d.delta?.type === 'text_delta') { text += d.delta.text; onText(text) }
+      else if (d.type === 'error') throw { code: 'api', message: d.error?.message || 'Stream error' };
+    }
+  }
+  return text;
+}
+
+async function ask(userText, display) {
+  if (ctl) ctl.abort();
+  stopSpeaking();
+  addMsg('you', display ?? userText);
+  S.history.push({ role: 'user', content: userText });
+  while (S.history.length > 16) S.history.shift();
+  while (S.history.length && S.history[0].role !== 'user') S.history.shift();
+  const heavy = /draft|write|script|email|dm\b|proposal|plan|strategy|offer|pric|objection|outline|post|caption|content|idea|analy|review|brief|why|how should/i.test(userText);
+  const bubble = addMsg('jarvis', '…');
+  const my = ctl = new AbortController();
+  S.busy = true; setPhase('thinking'); spoken = 0;
+  try {
+    const text = await brain(S.history.slice(), heavy ? 'default' : 'quick', t => {
+      if (my !== ctl) return;
+      const p = parse(t, false); bubble.textContent = p.say || '…'; $('#log').scrollTop = 1e9;
+      if (p.draft) showDraft(p.draft);
+      feedSpeech(p.say, false);
+    }, my.signal);
+    const p = parse(text, true);
+    bubble.textContent = p.say || (p.draft ? 'The draft is on screen, sir.' : 'Done.');
+    if (p.draft) showDraft(p.draft);
+    feedSpeech(p.say || (p.draft ? 'The draft is on screen, sir.' : ''), true);
+    S.history.push({ role: 'assistant', content: text.replace(/\[\[ACTIONS\]\][\s\S]*$/, '').trim() || 'Done.' });
+    S.convoUntil = Date.now() + 45000;
+    await runActions(p.actions);
+  } catch (e) {
+    if (S.history.at(-1)?.role === 'user') S.history.pop();
+    if (e.name === 'AbortError' || e.code === 'cancelled') bubble.remove();
+    else if (e.code === 'locked') bubble.remove();
+    else { const msg = 'Something went wrong on my end, sir. ' + (e.message || ''); bubble.textContent = msg; speak('Something went wrong on my end, sir.') }
+  } finally {
+    if (my === ctl) { S.busy = false; ctl = null; if (!speaking()) setPhase(idlePhase()) }
+  }
+}
+
+async function runActions(list) {
+  if (!Array.isArray(list) || !list.length) return;
+  let changed = 0; const problems = [];
+  for (const a of list.slice(0, 20)) {
+    if (!a || typeof a !== 'object') continue;
+    try {
+      switch (a.op) {
+        case 'add': if (a.kind && a.name) { store.add(a); changed++ } break;
+        case 'update': { const { op, id, ...rest } = a; if (store.update(id, rest)) changed++; break }
+        case 'delete': if (store.remove(a.id)) changed++; break;
+        case 'goal': D.goals = D.goals || {}; if (a.monthly != null) D.goals.monthly = Number(a.monthly) || 0; if (a.yearly != null) D.goals.yearly = Number(a.yearly) || 0; persist(); render(); changed++; break;
+        case 'spotify': { const r = await spotify(a); if (!r.ok) problems.push(r.error); break }
+        case 'calendar': { const r = await calendar(a); if (!r.ok) problems.push(r.error); break }
+        case 'open': { const r = openApp(a.app, a.url); if (!r.ok) problems.push(r.error); break }
+        case 'timer': if (Number(a.minutes) > 0) startTimer(Number(a.minutes), a.label); else { clearInterval(timer?.iv); timer = null; tickTimer() } break;
+        case 'quiet': goQuiet(); break;
+      }
+    } catch (e) { problems.push(e.message || String(e)) }
+  }
+  if (changed) toast(changed === 1 ? 'Updated' : changed + ' updates saved');
+  if (problems.length) { const t = problems.join(' '); addMsg('jarvis', t); speak(t) }
+}
+
+function showDraft(d) { $('#draftBox').hidden = false; $('#draftTitle').textContent = d.title; $('#draftBody').textContent = d.body }
+$('#closeDraft').onclick = () => $('#draftBox').hidden = true;
+$('#copyBtn').onclick = async () => {
+  try { await navigator.clipboard.writeText($('#draftBody').textContent); toast('Draft copied') }
+  catch { const r = document.createRange(); r.selectNodeContents($('#draftBody')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); toast('Selected. Press Ctrl+C to copy.') }
+};
+
+/* ---------- voice out ---------- */
+const synth = window.speechSynthesis;
+let spoken = 0, pending = 0, gen = 0, curAudio = null, curDone = null;
+const elQ = []; let elPlaying = false;
+const VOICE_PREF = [/Ryan.*Natural/i, /Thomas.*Natural/i, /Natural.*United Kingdom/i, /Guy.*Natural/i, /Andrew.*Natural/i, /Natural/i, /Google UK English Male/i, /Daniel/i, /Microsoft George/i, /en-GB/i];
+function allVoices() { return synth ? synth.getVoices().filter(v => /^en/i.test(v.lang)) : [] }
+function pickVoice() {
+  const vs = allVoices(); if (!vs.length) return null;
+  if (P.voice) { const v = vs.find(v => v.name === P.voice); if (v) return v }
+  for (const re of VOICE_PREF) { const v = vs.find(v => re.test(v.name) || re.test(v.lang)); if (v) return v }
+  return vs[0];
+}
+const hasNatural = () => allVoices().some(v => /Natural/i.test(v.name));
+const useEL = () => !!P.elKey;
+const speaking = () => pending > 0;
+function done1() { pending = Math.max(0, pending - 1); if (!pending) { resumeMic(); setPhase(S.busy ? 'thinking' : idlePhase()) } }
+function prep(text) { return text.replace(/\$([\d,.]+)\s?k\b/gi, '$1 thousand dollars').replace(/\$([\d,.]+)/g, '$1 dollars').replace(/\s+/g, ' ').trim() }
+function speak(text) {
+  text = prep(text || ''); if (P.muted || !text) return;
+  pending++; pauseMic(); setPhase('speaking');
+  if (useEL()) { elQ.push(fetchTTS(text)); if (!elPlaying) playNext(); return }
+  if (!synth) { done1(); return }
+  const u = new SpeechSynthesisUtterance(text);
+  const v = pickVoice(); if (v) { u.voice = v; u.lang = v.lang }
+  u.rate = P.rate || 1.05; u.pitch = 1;
+  u.onend = u.onerror = done1;
+  synth.speak(u);
+}
+async function fetchTTS(text) {
+  const id = P.elVoice || 'JBFqnCBsd6RMkjVDRZzb';
+  const r = await fetch('https://api.elevenlabs.io/v1/text-to-speech/' + encodeURIComponent(id) + '?output_format=mp3_44100_128', {
+    method: 'POST', headers: { 'xi-api-key': P.elKey, 'content-type': 'application/json', accept: 'audio/mpeg' },
+    body: JSON.stringify({ text, model_id: 'eleven_turbo_v2_5', voice_settings: { stability: 0.45, similarity_boost: 0.8, style: 0.15, speed: Math.min(1.2, Math.max(0.8, (P.rate || 1.05) - 0.05)) } })
+  });
+  if (!r.ok) throw new Error('ElevenLabs ' + r.status);
+  return URL.createObjectURL(await r.blob());
+}
+async function playNext() {
+  const my = gen; const p = elQ.shift();
+  if (!p) { elPlaying = false; return }
+  elPlaying = true;
+  try {
+    const url = await p; if (my !== gen) return;
+    await new Promise(res => { curDone = res; curAudio = new Audio(url); curAudio.onended = curAudio.onerror = res; curAudio.play().catch(res) });
+    URL.revokeObjectURL(url);
+  } catch (e) { if (my === gen) toast('Premium voice failed (' + e.message + '). Check the ElevenLabs key.') }
+  if (my !== gen) return;
+  done1(); playNext();
+}
+function stopSpeaking() {
+  gen++; if (synth) synth.cancel(); elQ.length = 0; elPlaying = false;
+  if (curAudio) { curAudio.pause(); curAudio = null } if (curDone) { curDone(); curDone = null }
+  if (pending) { pending = 0; resumeMic() }
+}
+function feedSpeech(say, final) {
+  const rest = say.slice(spoken); if (!rest) return;
+  let end = -1;
+  if (final) end = rest.length;
+  else if (spoken === 0) { const m = /[.!?]["')]?\s/.exec(rest); if (m && m.index > 12) end = m.index + m[0].length }
+  if (end > 0) { const chunk = rest.slice(0, end).trim(); spoken += end; if (chunk) speak(chunk) }
+}
+$('#stopBtn').onclick = () => { if (ctl) ctl.abort(); stopSpeaking(); setPhase(idlePhase()) };
+
+/* ---------- voice in: always listening while unlocked ---------- */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, micWanted = false, micPaused = false, micBackoff = 250;
+function micUI() {
+  const on = micWanted && rec;
+  $('#micLed').className = 'led' + (on ? (S.quiet ? '' : ' hot') : '');
+  $('#micTxt').textContent = !SR ? 'No mic support' : !on ? 'Mic off' : S.quiet ? 'Quiet · say "Jarvis"' : P.listen === 'always' ? 'Listening' : 'Listening for "Jarvis"';
+}
+function idlePhase() { return micWanted && rec && !S.quiet ? 'listening' : 'idle' }
+function startMic() {
+  if (!SR) { addMsg('sys', 'This browser can\'t do speech recognition. Use Microsoft Edge or Google Chrome.'); micUI(); return }
+  if (rec) return;
+  micWanted = true;
+  rec = new SR(); rec.lang = 'en-AU'; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
+  rec.onresult = e => {
+    let interim = '';
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const r = e.results[i];
+      if (r.isFinal) { $('#interim').textContent = ''; heard(r[0].transcript) } else interim += r[0].transcript;
+    }
+    $('#interim').textContent = interim;
+    micBackoff = 250;
+  };
+  rec.onerror = e => {
+    if (['not-allowed', 'service-not-allowed', 'audio-capture'].includes(e.error)) {
+      micWanted = false; rec = null; micUI();
+      addMsg('sys', e.error === 'audio-capture' ? 'No microphone found. Plug one in, then press the mic chip at the top.' : 'Microphone access is blocked. Click the lock icon in the address bar, allow the microphone, then press the mic chip at the top.');
+      setPhase('idle');
+    } else if (e.error === 'network') micBackoff = Math.min(8000, micBackoff * 2);
+  };
+  rec.onend = () => { if (micWanted && !micPaused && rec) setTimeout(() => { try { rec && rec.start() } catch {} }, micBackoff) };
+  try { rec.start() } catch {}
+  micUI(); if (!S.busy && !speaking()) setPhase(idlePhase());
+}
+function stopMic() { micWanted = false; const r = rec; rec = null; try { r && r.abort() } catch {} $('#interim').textContent = ''; micUI(); if (!S.busy && !speaking()) setPhase('idle') }
+function pauseMic() { if (micWanted && rec && !micPaused) { micPaused = true; try { rec.abort() } catch {} } }
+function resumeMic() { if (micWanted && rec && micPaused) { micPaused = false; setTimeout(() => { try { rec && rec.start() } catch {} }, 300) } }
+$('#micChip').onclick = () => { if (micWanted && rec) { if (S.quiet) { S.quiet = false; micUI(); setPhase(idlePhase()) } else stopMic() } else { S.quiet = false; startMic() } };
+function goQuiet() { S.quiet = true; S.convoUntil = 0; micUI(); setPhase('idle') }
+
+const NAME = /\b(jarvis|jervis|javis|jarvus|jarvas|travis)\b/i;
+const STRIP_NAME = /^.*?\b(jarvis|jervis|javis|jarvus|jarvas|travis)\b[,.!?]?\s*/i;
+function quickCommand(t) {
+  const l = t.toLowerCase().replace(/[.!?,]/g, '').trim();
+  if (/^(stop|stop talking|shut up|enough|that's enough)$/.test(l)) { stopSpeaking(); if (ctl) ctl.abort(); return true }
+  if (/^(pause|stop)( the)? (music|song|spotify)$|^pause$/.test(l)) { spotify({ do: 'pause' }); return true }
+  if (/^(skip|next)( song| track| one)?$|^skip (this|it)$/.test(l)) { spotify({ do: 'next' }); return true }
+  if (/^(resume|unpause)( the)?( music)?$|^play (the )?music$/.test(l)) { spotify({ do: 'resume' }); return true }
+  if (/^(turn it|volume) up$/.test(l)) { spotify({ do: 'volume', value: Math.min(100, (SP?.volume ?? 50) + 15) }); return true }
+  if (/^(turn it|volume) down$/.test(l)) { spotify({ do: 'volume', value: Math.max(0, (SP?.volume ?? 50) - 15) }); return true }
+  if (/^(lock|lock up|lock (the )?screen|lock it)$/.test(l)) { lock(); return true }
+  if (/^(go quiet|stop listening|give me a (minute|second)|be quiet|quiet)$/.test(l)) { goQuiet(); addMsg('sys', 'Quiet. Say "Jarvis" when you need me.'); return true }
+  return false;
+}
+function heard(raw) {
+  const t = raw.trim(); if (!t || t.length < 2) return;
+  const named = NAME.test(t);
+  if (S.quiet && !named) return;
+  if (named) { S.quiet = false; micUI() }
+  const body = named ? t.replace(STRIP_NAME, '') : t;
+  if (/(daddy'?s home|that is home|i'?m home|wake up)/i.test(t) && (named || /daddy'?s home|i'?m home/i.test(t))) return wake(t);
+  if (quickCommand(body)) { S.convoUntil = Date.now() + 45000; return }
+  const engaged = named || P.listen === 'always' || Date.now() < S.convoUntil;
+  if (!engaged) { $('#interim').textContent = 'Heard "' + t + '". Say "Jarvis" first.'; return }
+  if (named && body.length < 3) { addMsg('you', t); const r = ['Sir?', 'Yes, sir?', 'At your service.'][Math.floor(Math.random() * 3)]; addMsg('jarvis', r); speak(r); S.convoUntil = Date.now() + 45000; return }
+  ask(body, t);
+}
+function wake(display) {
+  ask(`[Kade has just ${display ? 'said "' + display + '"' : 'unlocked the command centre'}. Greet him for the time of day with a touch of dry wit, then a spoken briefing of at most 4 sentences: revenue vs goal this month, what's on the calendar today, leads due a follow-up or tasks due, and the single most valuable move today. Skip anything that's empty or not connected rather than listing it.]`, display || 'Brief me');
+}
+$('#wakeBtn').onclick = () => { stopSpeaking(); wake('Brief me') };
+$('#bar').onsubmit = e => { e.preventDefault(); const v = $('#input').value.trim(); if (!v) return; $('#input').value = ''; if (quickCommand(v)) return; ask(v) };
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#modal').hidden) { if (ctl) ctl.abort(); stopSpeaking(); setPhase(idlePhase()) } });
+
+/* ---------- phase ---------- */
+const PHASE_TXT = { idle: 'Standing by', listening: 'Listening', thinking: 'Thinking', speaking: 'Speaking' };
+function setPhase(p) { S.phase = p; $('#status').textContent = PHASE_TXT[p]; $('#stateBox').classList.toggle('live', p !== 'idle') }
+
+/* ---------- lock screen ---------- */
+let loops = [];
+function lock() {
+  if (!S.unlocked && !$('#lock').hidden) return;
+  S.unlocked = false; stopMic(); stopSpeaking(); if (ctl) ctl.abort();
+  loops.forEach(clearInterval); loops = [];
+  fetch('/api/login', { method: 'DELETE', credentials: 'same-origin' }).catch(() => {});
+  $('#pass').value = ''; $('#lockErr').textContent = ''; $('#lock').hidden = false; setTimeout(() => $('#pass').focus(), 50);
+}
+$('#lockBtn').onclick = lock;
+$('#lockForm').onsubmit = async e => {
+  e.preventDefault();
+  const pw = $('#pass').value; if (!pw) return;
+  $('#lockErr').textContent = '';
+  let ok = false;
+  try { const r = await fetch('/api/login', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password: pw }) }); ok = r.ok; if (!ok && r.status !== 401) { $('#lockErr').textContent = 'Can\'t reach the server (' + r.status + ').'; return } }
+  catch { $('#lockErr').textContent = 'Can\'t reach the server. Check your connection.'; return }
+  if (!ok) { $('#lockErr').textContent = 'Wrong passcode.'; const b = $('#lockbox'); b.classList.remove('shake'); void b.offsetWidth; b.classList.add('shake'); $('#pass').select(); return }
+  unlock();
+};
+async function unlock() {
+  S.unlocked = true; $('#lock').hidden = true;
+  if (synth) { const u = new SpeechSynthesisUtterance(''); synth.speak(u) } // warms up audio on this click
+  startMic();
+  await Promise.all([pullData(true), loadStatus()]);
+  await Promise.all([loadWhop(), loadCal(), loadNP()]);
+  const qs = new URLSearchParams(location.search);
+  if (qs.get('linked')) { const res = qs.get('result'); toast(res === 'ok' ? (qs.get('linked') === 'spotify' ? 'Spotify connected' : 'Google Calendar connected') : res); history.replaceState(null, '', '/') }
+  if (ST && !ST.brain) addMsg('sys', 'The AI key isn\'t set yet. Add ANTHROPIC_API_KEY in Vercel (see the setup guide).');
+  else if (ST && !ST.store) addMsg('sys', 'Cloud memory isn\'t connected, so records only last until the server restarts. Connect Upstash Redis in Vercel (see the setup guide).');
+  if (synth && allVoices().length && !hasNatural() && !useEL()) addMsg('sys', 'Tip: open Jarvis in Microsoft Edge for a far more human voice.');
+  loops.push(setInterval(() => document.visibilityState === 'visible' && loadWhop(), 60000));
+  loops.push(setInterval(() => { loadCal() }, 5 * 60000));
+  loops.push(setInterval(checkUpcoming, 30000));
+  loops.push(setInterval(() => document.visibilityState === 'visible' && SP?.linked && loadNP(), 20000));
+  loops.push(setInterval(() => pullData(false), 60000));
+  if (ST?.brain) wake(null);
+}
+
+/* ---------- settings ---------- */
+function fillVoices() {
+  const sel = $('#voiceSel'); const vs = allVoices(); const cur = pickVoice(); sel.replaceChildren();
+  vs.sort((a, b) => (/Natural/i.test(b.name) - /Natural/i.test(a.name)) || a.name.localeCompare(b.name))
+    .forEach(v => { const o = el('option', null, v.name.replace(/^Microsoft /, '').replace(/ - English/, ' ·')); o.value = v.name; if (cur && v.name === cur.name) o.selected = true; sel.append(o) });
+  if (!vs.length) sel.append(el('option', null, 'No voices found'));
+  $('#voiceTip').innerHTML = hasNatural() ? '<b>Natural</b> voices sound the most human. Ryan (UK) is the closest to a calm British assistant.' : 'This browser only has basic voices. Open Jarvis in <b>Microsoft Edge</b> for natural voices like Ryan (UK), or add an ElevenLabs key below.';
+}
+if (synth) synth.onvoiceschanged = () => { if (!$('#modal').hidden) fillVoices() };
+function connRow(label, sub, state, action) {
+  const r = el('div', 'conn'); r.append(el('span', 'led ' + (state === true ? 'on' : state === 'warn' ? 'warn' : '')));
+  const t = el('div'); t.append(label); t.append(el('small', null, sub)); r.append(t);
+  if (action) { const a = el('a', 'linkbtn', action[0]); a.href = action[1]; r.append(a) } else r.append(el('span'));
+  return r;
+}
+async function renderConns() {
+  await loadStatus(); const c = $('#conns'); c.replaceChildren();
+  if (!ST) { c.append(el('div', 'conn', 'Could not read connection status.')); return }
+  c.append(connRow('AI brain', ST.brain ? 'Connected' : 'Add ANTHROPIC_API_KEY in Vercel', ST.brain));
+  c.append(connRow('Cloud memory', ST.store ? 'Syncing across your devices' : 'Connect Upstash Redis in Vercel', ST.store || 'warn'));
+  c.append(connRow('Whop', ST.whop ? (W?.error ? 'Error: ' + W.error : 'Live sales and revenue') : 'Add WHOP_API_KEY in Vercel', ST.whop && !W?.error));
+  c.append(connRow('Spotify', !ST.spotify.configured ? 'Add Spotify keys in Vercel' : ST.spotify.linked ? 'Connected' : 'Ready to connect', ST.spotify.linked, ST.spotify.configured ? [ST.spotify.linked ? 'Reconnect' : 'Connect', '/api/spotify?action=login'] : null));
+  c.append(connRow('Google Calendar', !ST.google.configured ? 'Add Google keys in Vercel' : ST.google.linked ? 'Connected' : 'Ready to connect', ST.google.linked, ST.google.configured ? [ST.google.linked ? 'Reconnect' : 'Connect', '/api/google?action=login'] : null));
+}
+function rateUI() { $('#rateV').textContent = (+$('#rate').value).toFixed(2) + '×' }
+$('#rate').oninput = rateUI;
+function openSettings() {
+  fillVoices(); $('#rate').value = P.rate || 1.05; rateUI();
+  $('#elKey').value = P.elKey || ''; $('#elVoice').value = P.elVoice || '';
+  $('#goalM').value = D.goals?.monthly || ''; $('#goalY').value = D.goals?.yearly || '';
+  document.querySelectorAll('input[name=listen]').forEach(r => r.checked = r.value === (P.listen || 'name'));
+  $('#modal').hidden = false; renderConns();
+}
+function readSettings() {
+  P.voice = $('#voiceSel').value; P.rate = +$('#rate').value; P.elKey = $('#elKey').value.trim(); P.elVoice = $('#elVoice').value.trim();
+  P.listen = document.querySelector('input[name=listen]:checked')?.value || 'name';
+}
+function closeSettings() {
+  readSettings(); savePrefs();
+  const gm = Number($('#goalM').value) || 0, gy = Number($('#goalY').value) || 0;
+  if (gm !== (D.goals?.monthly || 0) || gy !== (D.goals?.yearly || 0)) { D.goals = { monthly: gm, yearly: gy }; persist(); render() }
+  $('#modal').hidden = true; micUI();
+}
+$('#setBtn').onclick = openSettings; $('#closeSet').onclick = closeSettings;
+$('#modal').onclick = e => { if (e.target.id === 'modal') closeSettings() };
+$('#modal').onkeydown = e => { if (e.key === 'Escape') closeSettings() };
+$('#testVoice').onclick = () => { readSettings(); stopSpeaking(); speak('Good evening, sir. Revenue is climbing nicely, and your next call is in forty minutes.') };
+function muteUI() { $('#muteBtn').setAttribute('aria-pressed', !!P.muted); $('#muteBtn').setAttribute('aria-label', P.muted ? 'Unmute voice' : 'Mute voice'); $('#spk').style.opacity = P.muted ? .35 : 1 }
+$('#muteBtn').onclick = () => { P.muted = !P.muted; if (P.muted) stopSpeaking(); savePrefs(); muteUI() };
+
+/* ---------- clock ---------- */
+function tick() {
+  const d = new Date();
+  $('#clock').textContent = new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: '2-digit', minute: '2-digit' }).format(d);
+  $('#dateStr').textContent = new Intl.DateTimeFormat('en-AU', { timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short' }).format(d);
+}
+setInterval(tick, 5000); tick();
+
+/* ---------- holographic projection ---------- */
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const orb = $('#orb'), oc = orb.getContext('2d'), bg = $('#bgfx'), bc = bg.getContext('2d');
+let amp = 0.1, dpr = 1, dust = [], bokeh = null;
+const H = 'rgba(59,140,255,', HI = 'rgba(188,214,255,', GOLD = 'rgba(255,181,74,';
+const DOTS = (() => { const n = 520, out = [], g = Math.PI * (3 - Math.sqrt(5)); for (let i = 0; i < n; i++) { const y = 1 - (i / (n - 1)) * 2, r = Math.sqrt(1 - y * y), th = g * i; out.push([Math.cos(th) * r, y, Math.sin(th) * r]) } return out })();
+function size() {
+  dpr = Math.min(devicePixelRatio || 1, 2);
+  const r = orb.getBoundingClientRect(); orb.width = Math.max(1, r.width * dpr); orb.height = Math.max(1, r.height * dpr);
+  bg.width = innerWidth * dpr; bg.height = innerHeight * dpr;
+  dust = Array.from({ length: Math.round(innerWidth * innerHeight / 9000) }, () => ({ x: Math.random(), y: Math.random(), s: Math.random() * 1.5 + .3, v: Math.random() * .00015 + .00003, a: Math.random() * .5 + .1 }));
+  bokeh = document.createElement('canvas'); bokeh.width = bg.width; bokeh.height = bg.height;
+  const k = bokeh.getContext('2d'), Wd = bokeh.width, Hh = bokeh.height;
+  const amb = k.createRadialGradient(Wd * .5, Hh * .38, 0, Wd * .5, Hh * .38, Math.max(Wd, Hh) * .7);
+  amb.addColorStop(0, 'rgba(18,60,150,.38)'); amb.addColorStop(.5, 'rgba(6,24,70,.2)'); amb.addColorStop(1, 'rgba(0,0,0,0)');
+  k.fillStyle = amb; k.fillRect(0, 0, Wd, Hh);
+  for (let i = 0; i < 26; i++) {
+    const x = Math.random() * Wd, y = Math.random() * Hh * .7, r = (Math.random() * 60 + 20) * dpr, warm = Math.random() < .3;
+    const g = k.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, warm ? 'rgba(255,170,90,.10)' : 'rgba(70,130,255,.10)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    k.fillStyle = g; k.beginPath(); k.arc(x, y, r, 0, Math.PI * 2); k.fill();
+  }
+}
+addEventListener('resize', size); size();
+let tx = 0;
+addEventListener('pointermove', e => { if (!reduce) tx = e.clientX / innerWidth - .5 });
+function tilt() { const m = document.querySelector('main'); m.style.setProperty('--ry-l', (7 - tx * 3).toFixed(2) + 'deg'); m.style.setProperty('--ry-r', (-7 - tx * 3).toFixed(2) + 'deg') }
+function drawBg(t) {
+  const Wd = bg.width, Hh = bg.height;
+  bc.clearRect(0, 0, Wd, Hh); bc.drawImage(bokeh, 0, 0);
+  const hor = Hh * .66, vx = Wd / 2; bc.lineWidth = dpr;
+  for (let i = -24; i <= 24; i++) { bc.strokeStyle = H + (.07 - Math.abs(i) * .002) + ')'; bc.beginPath(); bc.moveTo(vx + i * Wd * .006, hor); bc.lineTo(vx + i * Wd * .06, Hh); bc.stroke() }
+  const off = (t * .08) % 1;
+  for (let j = 0; j < 14; j++) { const p = (j + off) / 14, y = hor + (Hh - hor) * p * p; bc.strokeStyle = H + (.02 + p * .07) + ')'; bc.beginPath(); bc.moveTo(0, y); bc.lineTo(Wd, y); bc.stroke() }
+  const fade = bc.createLinearGradient(0, hor - 40 * dpr, 0, hor + 60 * dpr); fade.addColorStop(0, 'rgba(1,4,10,1)'); fade.addColorStop(1, 'rgba(1,4,10,0)');
+  bc.fillStyle = fade; bc.fillRect(0, hor - 40 * dpr, Wd, 100 * dpr);
+  for (const p of dust) { p.y -= p.v * (reduce ? 2 : 16); if (p.y < 0) p.y = 1; bc.fillStyle = HI + p.a * .5 + ')'; bc.fillRect(p.x * Wd, p.y * Hh, p.s * dpr, p.s * dpr) }
+}
+function ring(cx, cy, r, a0, a1, w, c) { oc.strokeStyle = c; oc.lineWidth = w * dpr; oc.beginPath(); oc.arc(cx, cy, r, a0, a1); oc.stroke() }
+function frame(ms) {
+  const t = ms / 1000 * (reduce ? .15 : 1);
+  const target = { idle: .08, listening: .28 + .08 * Math.sin(t * 4), thinking: .4, speaking: .45 + .45 * Math.abs(Math.sin(t * 8.1) * Math.sin(t * 2.9 + 1)) }[S.phase];
+  amp += (target - amp) * .1;
+  const flare = Math.max(0, 1 - (ms - S.flare) / 4000) * (S.flare ? 1 : 0);
+  drawBg(t); tilt();
+  const w = orb.width, h = orb.height, cx = w / 2, cy = h / 2, R = Math.min(w, h) * .25;
+  oc.clearRect(0, 0, w, h); oc.lineCap = 'butt';
+  const halo = oc.createRadialGradient(cx, cy, R * .3, cx, cy, R * 1.95);
+  halo.addColorStop(0, (flare ? GOLD : H) + (.22 + amp * .15 + flare * .2) + ')'); halo.addColorStop(.6, H + '.05)'); halo.addColorStop(1, 'rgba(0,0,0,0)');
+  oc.fillStyle = halo; oc.fillRect(0, 0, w, h);
+  oc.shadowColor = 'rgba(59,140,255,.95)'; oc.shadowBlur = 8 * dpr;
+  const rd = R * 1.62, rot = t * .04;
+  for (let i = 0; i < 180; i++) {
+    const a = i / 180 * Math.PI * 2 + rot, big = i % 15 === 0, len = big ? R * .09 : R * .035;
+    oc.strokeStyle = H + (big ? .9 : .35) + ')'; oc.lineWidth = (big ? 1.6 : 1) * dpr;
+    oc.beginPath(); oc.moveTo(cx + Math.cos(a) * rd, cy + Math.sin(a) * rd); oc.lineTo(cx + Math.cos(a) * (rd - len), cy + Math.sin(a) * (rd - len)); oc.stroke();
+  }
+  oc.shadowBlur = 0;
+  oc.fillStyle = HI + '.7)'; oc.font = `${9 * dpr}px "Geist Mono", monospace`; oc.textAlign = 'center'; oc.textBaseline = 'middle';
+  for (let i = 0; i < 12; i++) { const a = i / 12 * Math.PI * 2 + rot; oc.fillText(String(i * 30).padStart(3, '0'), cx + Math.cos(a) * (rd + R * .09), cy + Math.sin(a) * (rd + R * .09)) }
+  oc.shadowBlur = 8 * dpr;
+  ring(cx, cy, rd + R * .17, 0, Math.PI * 2, .8, H + '.2)');
+  const r2 = R * 1.42, o2 = -t * .22;
+  for (let s = 0; s < 3; s++) { const a = o2 + s * Math.PI * 2 / 3; ring(cx, cy, r2, a, a + 1.5, 3 + amp * 3, (s === 0 ? GOLD : H) + (.55 + amp * .4) + ')') }
+  const r3 = R * 1.3, o3 = t * .5;
+  for (let s = 0; s < 24; s++) { const a = o3 + s * Math.PI / 12; ring(cx, cy, r3, a, a + .16, 1.2, H + '.5)') }
+  ring(cx, cy, R * 1.18, 0, Math.PI * 2, 1, HI + (.35 + amp * .4) + ')');
+  if (oc.createConicGradient) {
+    oc.shadowBlur = 0; const cg = oc.createConicGradient(t * 1.1 % (Math.PI * 2), cx, cy);
+    cg.addColorStop(0, H + '.3)'); cg.addColorStop(.12, H + '0)'); cg.addColorStop(1, H + '0)');
+    oc.fillStyle = cg; oc.beginPath(); oc.arc(cx, cy, R * 1.3, 0, Math.PI * 2); oc.arc(cx, cy, R * 1.02, 0, Math.PI * 2, true); oc.fill();
+  }
+  oc.shadowBlur = 6 * dpr;
+  const spin = t * .25, tl = .38, ct = Math.cos(tl), st = Math.sin(tl);
+  const wob = a => 1 + amp * .06 * Math.sin(a * 4 + t * 6);
+  const proj = (x, y, z) => { const x1 = x * Math.cos(spin) + z * Math.sin(spin), z1 = -x * Math.sin(spin) + z * Math.cos(spin); return [x1, y * ct - z1 * st, y * st + z1 * ct] };
+  oc.lineWidth = .9 * dpr;
+  for (let m = 0; m < 12; m++) {
+    const lon = m / 12 * Math.PI; oc.beginPath();
+    for (let s = 0; s <= 80; s++) { const a = s / 80 * Math.PI * 2; const [x, y] = proj(Math.cos(a) * Math.cos(lon), Math.sin(a), Math.cos(a) * Math.sin(lon)); const k = R * wob(a + m); s ? oc.lineTo(cx + x * k, cy + y * k) : oc.moveTo(cx + x * k, cy + y * k) }
+    oc.strokeStyle = H + '.36)'; oc.stroke();
+  }
+  for (let p = -3; p <= 3; p++) {
+    const lat = p / 8 * Math.PI, yy = Math.sin(lat), rr = Math.cos(lat); oc.beginPath();
+    for (let s = 0; s <= 80; s++) { const a = s / 80 * Math.PI * 2; const [x, y] = proj(Math.cos(a) * rr, yy, Math.sin(a) * rr); s ? oc.lineTo(cx + x * R, cy + y * R) : oc.moveTo(cx + x * R, cy + y * R) }
+    oc.strokeStyle = H + (p === 0 ? .65 : .28) + ')'; oc.stroke();
+  }
+  oc.shadowBlur = 0;
+  for (const d of DOTS) { const [x, y, z] = proj(d[0], d[1], d[2]); if (z < -.1) continue; oc.fillStyle = HI + (.15 + z * .6) + ')'; oc.fillRect(cx + x * R - dpr * .6, cy + y * R - dpr * .6, 1.3 * dpr, 1.3 * dpr) }
+  const core = oc.createRadialGradient(cx, cy, 0, cx, cy, R * (.9 + amp * .15));
+  core.addColorStop(0, `rgba(235,244,255,${.35 + amp * .45})`); core.addColorStop(.35, (flare ? GOLD : H) + (.2 + amp * .2 + flare * .3) + ')'); core.addColorStop(1, 'rgba(0,0,0,0)');
+  oc.fillStyle = core; oc.beginPath(); oc.arc(cx, cy, R, 0, Math.PI * 2); oc.fill();
+  oc.shadowBlur = 10 * dpr; ring(cx, cy, R * 1.02, 0, Math.PI * 2, 1.2, HI + '.6)');
+  // active clients in orbit
+  const orbiters = D.records.filter(r => r.kind === 'client' && r.status !== 'refunded' && r.status !== 'completed').slice(-8);
+  const ex = R * 1.78, ey = R * .58, rt = -.18;
+  oc.shadowBlur = 0; oc.strokeStyle = H + '.18)'; oc.lineWidth = dpr; oc.setLineDash([2 * dpr, 5 * dpr]);
+  oc.beginPath(); oc.ellipse(cx, cy, ex, ey, rt, 0, Math.PI * 2); oc.stroke(); oc.setLineDash([]);
+  orbiters.forEach((c, i) => {
+    const a = t * .12 + i / orbiters.length * Math.PI * 2, x0 = Math.cos(a) * ex, y0 = Math.sin(a) * ey;
+    const x = cx + x0 * Math.cos(rt) - y0 * Math.sin(rt), y = cy + x0 * Math.sin(rt) + y0 * Math.cos(rt);
+    const al = Math.sin(a) > 0 ? 1 : .45;
+    oc.shadowColor = 'rgba(255,181,74,1)'; oc.shadowBlur = 12 * dpr;
+    oc.fillStyle = GOLD + al + ')'; oc.beginPath(); oc.arc(x, y, 3.2 * dpr, 0, Math.PI * 2); oc.fill();
+    oc.shadowBlur = 0; oc.strokeStyle = GOLD + (.5 * al) + ')'; oc.beginPath(); oc.arc(x, y, 7 * dpr, 0, Math.PI * 2); oc.stroke();
+    const sd = x > cx ? -1 : 1;
+    oc.beginPath(); oc.moveTo(x + sd * 7 * dpr, y - 4 * dpr); oc.lineTo(x + sd * 16 * dpr, y - 12 * dpr); oc.lineTo(x + sd * 22 * dpr, y - 12 * dpr); oc.stroke();
+    oc.fillStyle = HI + (.9 * al) + ')'; oc.textAlign = sd > 0 ? 'left' : 'right'; oc.font = `${10 * dpr}px "Geist Mono", monospace`;
+    oc.fillText(String(c.name).toUpperCase().slice(0, 14), x + sd * 25 * dpr, y - 12 * dpr);
+  });
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ---------- boot ---------- */
+muteUI(); micUI(); render(); renderCal(); renderNP(); setPhase('idle');
+addMsg('sys', 'Command centre online.');
+})();
+</script>
+</body>
+</html>
