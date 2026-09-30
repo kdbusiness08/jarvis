@@ -9,7 +9,8 @@ const delta = text => enc.encode('data: ' + JSON.stringify({ type: 'content_bloc
 
 const tired = globalThis.__jarvisTired || (globalThis.__jarvisTired = new Map()); // model -> retry-after time
 const noThink = globalThis.__jarvisNoThink || (globalThis.__jarvisNoThink = new Set()); // models that reject the thinking setting
-const noSearch = globalThis.__jarvisNoSearch || (globalThis.__jarvisNoSearch = new Set()); // models that can't use web search
+const noSearch = globalThis.__jarvisNoSearch || (globalThis.__jarvisNoSearch = new Map()); // model -> time web search can be tried again
+const searchOff = m => (noSearch.get(m) || 0) > Date.now();
 async function gemini(key, b, messages, signal) {
   // Several free models, each with its own daily allowance. If one is used up, fall through to the next.
   const quick = ['gemini-3.1-flash-lite', 'gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-3-flash-preview'];
@@ -23,13 +24,13 @@ async function gemini(key, b, messages, signal) {
     const last = contents[contents.length - 1];
     if (last && last.role === role) last.parts[0].text += '\n\n' + m.content; else contents.push({ role, parts: [{ text: m.content }] });
   }
-  // Quick chat: minimal "thinking" so replies start fast. Real questions: a bit more thinking so answers are smarter.
+  // Minimal "thinking" so replies start fast; real questions go to the stronger model first (see the deep list).
   // Questions about current events can use Google Search. If a model rejects either setting, it's remembered and left off.
   const wantSearch = !!b.search;
   const body = model => JSON.stringify({
     systemInstruction: { parts: [{ text: String(b.system || '').slice(0, 200000) }] }, contents,
-    ...(wantSearch && !noSearch.has(model) ? { tools: [{ google_search: {} }] } : {}),
-    generationConfig: { maxOutputTokens: b.tier === 'quick' ? 1200 : 4000, temperature: 0.8, ...(noThink.has(model) ? {} : { thinkingConfig: { thinkingLevel: b.tier === 'quick' ? 'minimal' : 'low' } }) }
+    ...(wantSearch && !searchOff(model) ? { tools: [{ google_search: {} }] } : {}),
+    generationConfig: { maxOutputTokens: b.tier === 'quick' ? 1200 : 4000, temperature: 0.8, ...(noThink.has(model) ? {} : { thinkingConfig: { thinkingLevel: 'minimal' } }) }
   });
   let r = null, lastMsg = '', limited = false, busy = false;
   // Race: start the best model; if it hasn't started answering within ~2 seconds, start the next one too.
@@ -55,7 +56,8 @@ async function gemini(key, b, messages, signal) {
         if (res.ok) { ctrls.delete(ac); clearTimeout(hedge); finish({ res, model }); return }
         clearTimeout(hedge);
         try { lastMsg = (await res.json()).error.message } catch { lastMsg = 'Gemini answered ' + res.status }
-        if (res.status === 400 && wantSearch && /search|tool|ground/i.test(lastMsg) && !noSearch.has(model)) { noSearch.add(model); list.splice(next, 0, model) }
+        // A web-search problem (not allowed, or its own limit) only switches search off for a while; the model itself is fine.
+        if (wantSearch && !searchOff(model) && ([400, 403].includes(res.status) || (res.status === 429 && /search|ground|tool/i.test(lastMsg)) || res.status === 429)) { noSearch.set(model, Date.now() + (res.status === 429 ? 3600e3 : 12 * 3600e3)); list.splice(next, 0, model) }
         else if (res.status === 400 && /think/i.test(lastMsg) && !noThink.has(model)) { noThink.add(model); list.splice(next, 0, model) }
         else if (res.status === 429) { limited = true; tired.set(model, Date.now() + (/per.?day|daily|PerDay/i.test(lastMsg) ? 3600e3 : 60e3)) }
         else if (res.status === 404 || res.status === 400) tired.set(model, Date.now() + 6 * 3600e3);
@@ -73,7 +75,7 @@ async function gemini(key, b, messages, signal) {
     const got = await attempt(pass);
     if (got) r = got.res;
   }
-  if (!r) return json({ error: busy ? "Google's AI is swamped right now, give me a few seconds and ask again." : limited ? "I've used up today's free AI allowance, but music, pause and skip still work, and it resets within the day." : lastMsg }, limited && !busy ? 429 : 503);
+  if (!r) return json({ error: busy ? "Google's AI is swamped right now, give me a few seconds and ask again." : limited ? "I've used up today's free AI allowance, but music, pause and skip still work, and it resets within the day." : lastMsg, detail: String(lastMsg).slice(0, 300) }, limited && !busy ? 429 : 503);
   // Re-shape Gemini's stream into the same events the page already understands.
   const reader = r.body.getReader(), dec = new TextDecoder();
   let buf = '';
