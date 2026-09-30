@@ -843,12 +843,32 @@ function parse(t, final) {
 }
 
 async function brain(messages, tier, onText, signal) {
-  const r = await fetch('/api/brain', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ system: rules(), messages, tier }), signal });
+  // Retries quietly when Google is busy or the connection blips, so a hiccup never reaches you.
+  const waits = [0, 1500, 3500, 6000];
+  let last;
+  for (let n = 0; n < waits.length; n++) {
+    if (waits[n]) { await new Promise(res => setTimeout(res, waits[n])); if (signal?.aborted) throw { name: 'AbortError' } }
+    let got = '';
+    try { return await brainOnce(messages, tier, t => { got = t; onText(t) }, signal) }
+    catch (e) {
+      last = e;
+      if (e.name === 'AbortError' || e.code === 'locked' || !e.retry) throw e;
+      if (got) return got; // keep what already arrived instead of starting over
+    }
+  }
+  throw last;
+}
+async function brainOnce(messages, tier, onText, signal) {
+  let r;
+  try { r = await fetch('/api/brain', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ system: rules(), messages, tier }), signal }) }
+  catch (e) { if (e.name === 'AbortError') throw e; throw { code: 'net', retry: true, message: navigator.onLine === false ? "I've lost the internet connection, sir." : "I couldn't reach my servers just then, sir." } }
   if (r.status === 401) { lock(); throw { code: 'locked' } }
-  if (!r.ok) { let m = ''; try { m = (await r.json()).error } catch {} throw { code: 'api', message: m || ('Error ' + r.status) } }
+  if (!r.ok) { let m = ''; try { m = (await r.json()).error } catch {} throw { code: 'api', retry: r.status >= 500 || r.status === 408, status: r.status, message: m || ('Error ' + r.status) } }
   const rd = r.body.getReader(), dec = new TextDecoder(); let buf = '', text = '';
   for (;;) {
-    const { value, done } = await rd.read(); if (done) break;
+    let value, done;
+    try { ({ value, done } = await rd.read()) } catch (e) { if (e.name === 'AbortError') throw e; if (text) break; throw { code: 'net', retry: true, message: 'The connection dropped, sir.' } }
+    if (done) break;
     buf += dec.decode(value, { stream: true });
     let i;
     while ((i = buf.indexOf('\n\n')) >= 0) {
@@ -856,9 +876,10 @@ async function brain(messages, tier, onText, signal) {
       const line = ev.split('\n').find(l => l.startsWith('data:')); if (!line) continue;
       let d; try { d = JSON.parse(line.slice(5)) } catch { continue }
       if (d.type === 'content_block_delta' && d.delta?.type === 'text_delta') { text += d.delta.text; onText(text) }
-      else if (d.type === 'error') throw { code: 'api', message: d.error?.message || 'Stream error' };
+      else if (d.type === 'error') { if (text) return text; throw { code: 'api', retry: true, message: d.error?.message || 'Stream error' } }
     }
   }
+  if (!text.trim()) throw { code: 'api', retry: true, message: 'I drew a blank there, sir.' };
   return text;
 }
 
@@ -891,7 +912,12 @@ async function ask(userText, display) {
     if (S.history.at(-1)?.role === 'user') S.history.pop();
     if (e.name === 'AbortError' || e.code === 'cancelled') bubble.remove();
     else if (e.code === 'locked') bubble.remove();
-    else { const msg = 'Something went wrong on my end, sir. ' + (e.message || ''); bubble.textContent = msg; speak('Something went wrong on my end, sir.') }
+    else {
+      // Friendly, plain message. Raw technical text never gets read out.
+      let msg = String(e.message || '');
+      if (!/sir/.test(msg) || msg.length > 180) msg = e.status === 429 ? "I've hit today's free AI limit, sir. Music and the dashboard still work." : "Google's AI didn't answer after a few tries, sir. Ask me again in a moment.";
+      bubble.textContent = msg; speak(msg);
+    }
   } finally {
     if (my === ctl) { S.busy = false; ctl = null; if (!speaking()) setPhase(idlePhase()) }
   }
