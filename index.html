@@ -354,12 +354,12 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
     </div>
 
     <h3>Voice</h3>
-    <div class="field"><label for="aiVoiceSel">Jarvis's voice (natural AI voice, free)</label><select id="aiVoiceSel">
-      <option value="Charon">Charon · deep and calm</option><option value="Algieba">Algieba · smooth</option><option value="Sadaltager">Sadaltager · knowledgeable</option>
+    <div class="field"><label for="aiVoiceSel">Google AI voice (human, but 3 to 8 seconds slower)</label><select id="aiVoiceSel">
+      <option value="off">Off · instant voice (recommended)</option><option value="Charon">Charon · deep and calm</option><option value="Algieba">Algieba · smooth</option><option value="Sadaltager">Sadaltager · knowledgeable</option>
       <option value="Iapetus">Iapetus · clear</option><option value="Rasalgethi">Rasalgethi · warm</option><option value="Schedar">Schedar · even</option><option value="Orus">Orus · firm</option>
-      <option value="off">Off · use the browser voice</option></select>
-      <p>Press Test to hear it. If Google's free voice allowance runs out, Jarvis uses the backup voice below until it resets.</p></div>
-    <div class="field"><label for="voiceSel">Backup voice</label><select id="voiceSel"></select><p id="voiceTip"></p></div>
+      </select>
+      <p>For a human voice that is also instant, open Jarvis in <b>Microsoft Edge</b> and pick a <b>Natural</b> voice below, or add an ElevenLabs key.</p></div>
+    <div class="field"><label for="voiceSel">Instant voice</label><select id="voiceSel"></select><p id="voiceTip"></p></div>
     <div class="field"><span class="flabel">Speaking speed</span>
       <div class="rowf"><input id="rate" type="range" min="0.85" max="1.35" step="0.05" aria-label="Speaking speed"><span class="rv" id="rateV"></span><button class="linkbtn" id="testVoice" type="button">Test</button></div></div>
     <div class="field"><label for="elKey">ElevenLabs key (optional, most human voice)</label><input id="elKey" type="password" placeholder="Leave empty to use the built-in voice" autocomplete="off">
@@ -974,7 +974,7 @@ function pickVoice() {
 const hasNatural = () => allVoices().some(v => /Natural/i.test(v.name));
 const useEL = () => !!P.elKey;
 let aiOffUntil = 0;
-const useAI = () => !P.elKey && P.aiVoice !== false && !!ST?.voice && Date.now() > aiOffUntil;
+const useAI = () => !P.elKey && P.aiVoiceOn === true && !!ST?.voice && Date.now() > aiOffUntil; // opt-in: it sounds human but takes a few seconds
 const speaking = () => pending > 0;
 function done1() { pending = Math.max(0, pending - 1); if (!pending) { resumeMic(); setPhase(S.busy ? 'thinking' : idlePhase()) } }
 function prep(text) { return text.replace(/\$([\d,.]+)\s?k\b/gi, '$1 thousand dollars').replace(/\$([\d,.]+)/g, '$1 dollars').replace(/\s+/g, ' ').trim() }
@@ -1200,14 +1200,14 @@ $('#rate').oninput = rateUI;
 function openSettings() {
   fillVoices(); $('#rate').value = P.rate || 1.05; rateUI();
   $('#elKey').value = P.elKey || ''; $('#elVoice').value = P.elVoice || '';
-  $('#aiVoiceSel').value = P.aiVoice === false ? 'off' : (P.aiVoiceName || 'Charon');
+  $('#aiVoiceSel').value = P.aiVoiceOn === true ? (P.aiVoiceName || 'Charon') : 'off';
   $('#goalM').value = D.goals?.monthly || ''; $('#goalY').value = D.goals?.yearly || '';
   document.querySelectorAll('input[name=listen]').forEach(r => r.checked = r.value === (P.listen || 'name'));
   $('#modal').hidden = false; renderConns();
 }
 function readSettings() {
   P.voice = $('#voiceSel').value; P.rate = +$('#rate').value; P.elKey = $('#elKey').value.trim(); P.elVoice = $('#elVoice').value.trim();
-  const av = $('#aiVoiceSel').value; P.aiVoice = av !== 'off'; if (av !== 'off') P.aiVoiceName = av; aiOffUntil = 0;
+  const av = $('#aiVoiceSel').value; P.aiVoiceOn = av !== 'off'; if (av !== 'off') P.aiVoiceName = av; aiOffUntil = 0;
   P.listen = document.querySelector('input[name=listen]:checked')?.value || 'name';
 }
 function closeSettings() {
