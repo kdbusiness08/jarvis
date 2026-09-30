@@ -38,23 +38,25 @@ export async function GET(req) {
     if (!info.has_next_page || !info.end_cursor) break;
     after = info.end_cursor;
   }
-  if (new URL(req.url).searchParams.has('debug')) { const st = {}; for (const p of payments) { const k = p.status + '/' + (p.substatus || ''); st[k] = (st[k] || 0) + 1 } return json({ fetched: payments.length, statuses: st, idParam, company: !!company, error, fields: Object.keys(payments[0] || {}) }) }
+  if (new URL(req.url).searchParams.has('debug')) { const st = {}; for (const p of payments) { const k = p.status + '/' + (p.substatus || ''); st[k] = (st[k] || 0) + 1 } return json({ fetched: payments.length, statuses: st, idParam, company: !!company, error, fields: Object.keys(payments[0] || {}), sample: (() => { const p = payments.find(x => x.status === 'paid') || {}; return { total: p.total, usd_total: p.usd_total, subtotal: p.subtotal, refunded: p.refunded_amount, paid_at: p.paid_at, created_at: p.created_at } })() }) }
   if (error && !payments.length) return json({ configured: true, error }, 502);
 
   const sum = { today: 0, week: 0, lastWeek: 0, month: 0, year: 0, countToday: 0, countMonth: 0, countYear: 0 };
   const recent = [];
   for (const pay of payments) {
     if (!['paid', 'succeeded'].includes(pay.status) && pay.substatus !== 'succeeded') continue;
-    const gross = Number(pay.usd_total ?? pay.total ?? pay.subtotal ?? 0);
-    const amount = Math.max(0, gross - Number(pay.refunded_amount || 0));
-    const at = new Date(pay.paid_at || pay.created_at);
+    const num = v => typeof v === 'object' && v ? Number(v.amount ?? v.value ?? 0) : Number(v);
+    const gross = num(pay.usd_total ?? pay.total ?? pay.subtotal ?? pay.final_amount ?? 0) || 0;
+    const amount = Math.max(0, gross - (num(pay.refunded_amount) || 0));
+    const rawAt = pay.paid_at ?? pay.created_at;
+    const at = new Date(typeof rawAt === 'number' ? (rawAt < 1e12 ? rawAt * 1000 : rawAt) : /^\d+$/.test(String(rawAt)) ? Number(rawAt) * (Number(rawAt) < 1e12 ? 1000 : 1) : rawAt);
     if (!amount || isNaN(at)) continue;
     if (at >= yearStart) { sum.year += amount; sum.countYear++ }
     if (at >= monthStart) { sum.month += amount; sum.countMonth++ }
     if (at >= weekStart) sum.week += amount;
     else if (at >= lastWeekStart) sum.lastWeek += amount;
     if (at >= dayStart) { sum.today += amount; sum.countToday++ }
-    if (recent.length < 12) recent.push({ id: pay.id, amount, at: at.toISOString(), name: pay.user?.name || pay.user?.username || 'Someone', product: pay.product?.title || 'Rise' });
+    if (recent.length < 12) recent.push({ id: pay.id, amount, at: at.toISOString(), name: pay.user?.name || pay.user?.username || 'Someone', product: pay.product?.title || pay.line_items?.[0]?.name || pay.line_items?.[0]?.title || 'Rise' });
   }
   for (const k of ['today', 'week', 'lastWeek', 'month', 'year']) sum[k] = Math.round(sum[k] * 100) / 100;
   const value = { configured: true, currency: 'USD', ...sum, recent, partial: !!error, updatedAt: new Date().toISOString() };
