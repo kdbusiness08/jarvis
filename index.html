@@ -276,6 +276,7 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
           <div class="mini"><div class="k">This week</div><div class="v" id="revW">$0</div></div>
           <div class="mini"><div class="k">Sales this month</div><div class="v" id="cntM">0</div></div>
         </div>
+        <div id="paceLine" style="margin-top:10px;font-family:var(--f-mono);font-size:11px;letter-spacing:.06em;color:var(--muted);line-height:1.5"></div>
       </div>
       <div class="card">
         <div class="card-h"><h2>Today's numbers</h2><span class="rule"></span><span class="sub" id="scoreSub"></span></div>
@@ -296,7 +297,7 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
     <section class="center" aria-label="Jarvis">
       <div class="sphere"><canvas id="orb" aria-hidden="true"></canvas></div>
       <div class="state" id="stateBox" role="status"><i></i><span id="status">Standing by</span></div>
-      <div class="actions"><button class="wake" id="wakeBtn">Brief me</button><button class="wake ghost sm" id="fuBtn">Follow-ups</button><button class="wake ghost sm" id="contentBtn">Content ideas</button><button class="wake ghost sm" id="weekBtn">Weekly report</button><button class="wake ghost sm" id="stopBtn">Stop</button></div>
+      <div class="actions"><button class="wake" id="wakeBtn">Brief me</button><button class="wake ghost sm" id="fuBtn">Follow-ups</button><button class="wake ghost sm" id="contentBtn">Content ideas</button><button class="wake ghost sm" id="weekBtn">Weekly report</button><button class="wake ghost sm" id="wrapBtn">Wrap up</button><button class="wake ghost sm" id="stopBtn">Stop</button></div>
       <div class="card convo">
         <div class="log" id="log" aria-live="polite"></div>
         <div class="interim" id="interim"></div>
@@ -318,6 +319,7 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
       </div>
       <div class="card" style="flex:1">
         <div class="card-h"><h2>Tasks</h2><span class="rule"></span><span class="sub" id="taskCount"></span><button class="addbtn" id="addTask" type="button">+ Add</button></div>
+        <div class="rows" id="remRows"></div>
         <div class="rows" id="taskRows"></div>
       </div>
     </section>
@@ -532,6 +534,7 @@ function render() {
   const tasks = by('task').sort((a, b) => (a.status === 'done') - (b.status === 'done') || (a.due || '9').localeCompare(b.due || '9'));
   fill($('#taskRows'), tasks, 'task');
   const open = tasks.filter(t => t.status !== 'done').length; $('#taskCount').textContent = open ? open + ' open' : ''; renderScore();
+  renderReminders(); $('#paceLine').textContent = paceText(true);
 }
 document.querySelectorAll('.seg button').forEach(b => b.onclick = () => { S.tab = b.dataset.k; document.querySelectorAll('.seg button').forEach(x => x.setAttribute('aria-selected', x === b)); render() });
 
@@ -615,6 +618,116 @@ function coldLeads() {
   const today = localISO(), limit = shiftISO(today, -3);
   return D.records.filter(r => r.kind === 'lead' && !['won', 'lost'].includes(r.status) && ((r.due && r.due <= today) || (!r.due && (r.touched || localISO(new Date(r.createdAt || Date.now()))) <= limit)));
 }
+/* ---------- pace to goal ---------- */
+function pace() {
+  const goal = +(D.goals?.monthly) || 0, rev = revenue();
+  const [y, mo, d] = localISO().split('-').map(Number);
+  const dim = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+  const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: 'numeric', hourCycle: 'h23' }).format(new Date()));
+  const elapsed = (d - 1 + hour / 24) / dim;
+  const proj = elapsed >= 0.08 ? rev.month / elapsed : null; // too early in the month to project fairly
+  const daysLeft = dim - d + 1, need = Math.max(0, goal - rev.month);
+  const avg = W?.countYear ? W.year / W.countYear : rev.countMonth ? rev.month / rev.countMonth : 0;
+  const closes = avg && need ? Math.ceil(need / avg) : 0;
+  return { goal, month: rev.month, proj, daysLeft, need, perDay: need / daysLeft, avg, closes, perWeek: closes / Math.max(1, daysLeft / 7) };
+}
+function paceText(short) {
+  const p = pace();
+  if (!p.goal) return short ? 'Set a monthly goal to see your pace' : 'no monthly goal set';
+  const round = n => money(Math.round(n / 100) * 100);
+  if (p.need <= 0) return short ? `Goal hit · ${moneyShort(p.month)} of ${moneyShort(p.goal)}` : `goal already hit (${money(p.month)} of ${money(p.goal)})`;
+  if (short) return (p.proj != null ? `On pace for ${moneyShort(p.proj)}` : 'Early in the month') + ` · need ${moneyShort(p.perDay)}/day` + (p.closes ? ` · ~${p.closes} more ${p.closes === 1 ? 'close' : 'closes'}` : '');
+  let t = p.proj != null
+    ? `You're on pace for about ${round(p.proj)} this month, ` + (p.proj >= p.goal ? `which clears your ${money(p.goal)} goal, so keep doing what you're doing.` : `so you're tracking about ${round(p.goal - p.proj)} short of ${money(p.goal)}.`)
+    : `It's early in the month so there's no real pace yet, but you're at ${money(p.month)} of ${money(p.goal)}.`;
+  t += ` To hit it you need about ${money(p.perDay)} a day over the next ${p.daysLeft} days` + (p.closes ? `, which is roughly ${p.closes} more ${p.closes === 1 ? 'close' : 'closes'}, around ${Math.max(1, Math.round(p.perWeek * 10) / 10)} a week.` : '.');
+  return t;
+}
+
+/* ---------- reminders ---------- */
+function parseWhen(s) {
+  s = String(s || '').toLowerCase().replace(/\./g, '').replace(/\s+/g, ' ').trim();
+  let m;
+  if ((m = s.match(/^in (\d+|[a-z]+(?: [a-z]+)?) (minute|min|hour|hr)s?$/))) { const n = numOf(m[1]); return n ? Date.now() + n * (m[2][0] === 'h' ? 3600e3 : 60e3) : null }
+  if (/^in (half an hour|thirty minutes)$/.test(s)) return Date.now() + 1800e3;
+  if (/^in an hour$/.test(s)) return Date.now() + 3600e3;
+  m = s.match(/^(?:(today|tonight|tomorrow)(?: at| around)? ?)?(?:at |around )?(\d{1,2})(?::?(\d{2}))? ?(am|pm)?(?: (today|tonight|tomorrow))?$/);
+  if (!m) {
+    if ((m = s.match(/^(tomorrow|tonight)(?: (morning|arvo|afternoon|evening))?$/))) {
+      const d = new Date(); if (m[1] === 'tomorrow') d.setDate(d.getDate() + 1);
+      d.setHours({ morning: 9, arvo: 14, afternoon: 14, evening: 18 }[m[2]] ?? (m[1] === 'tonight' ? 19 : 9), 0, 0, 0); return d.getTime();
+    }
+    return null;
+  }
+  const day = m[1] || m[5], ap = m[4]; let h = +m[2]; const min = +(m[3] || 0);
+  if (h > 23 || min > 59) return null;
+  if (ap === 'pm' && h < 12) h += 12; if (ap === 'am' && h === 12) h = 0;
+  const base = new Date(); if (day === 'tomorrow') base.setDate(base.getDate() + 1);
+  const at = hh => { const x = new Date(base); x.setHours(hh, min, 0, 0); return x.getTime() };
+  if (ap || h > 12 || h === 0) { let t = at(h); if (!day && t < Date.now()) t += 864e5; return t }
+  if (day === 'tonight') return at(h < 12 ? h + 12 : h);
+  if (day === 'tomorrow') return at(h < 7 ? h + 12 : h);
+  const opts = [at(h), at(h === 12 ? 12 : h + 12)].filter(t => t > Date.now()).sort((a, b) => a - b);
+  return opts[0] ?? at(h) + 864e5;
+}
+function whenLabel(at) {
+  const d = localISO(new Date(at)), t0 = localISO();
+  return (d === t0 ? '' : d === shiftISO(t0, 1) ? 'tomorrow ' : new Date(at).toLocaleDateString('en-AU', { timeZone: TZ, weekday: 'long' }) + ' ') + 'at ' + localTime(new Date(at)).replace(':00', '');
+}
+function addReminder(at, text) {
+  D.reminders = D.reminders || [];
+  const r = { id: 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), at, text: String(text).trim().replace(/[.!]+$/, '') };
+  D.reminders.push(r); persist(); render(); return r;
+}
+function removeReminder(id) { const n = (D.reminders || []).length; D.reminders = (D.reminders || []).filter(r => r.id !== id); if (D.reminders.length !== n) { persist(); render(); return true } return false }
+function renderReminders() {
+  const box = $('#remRows'); if (!box) return; box.replaceChildren();
+  for (const r of (D.reminders || []).slice().sort((a, b) => a.at - b.at)) {
+    const w = el('div', 'row'); w.append(el('div', 'av time', localTime(new Date(r.at))));
+    const m = el('div', 'main'); m.append(el('div', 'nm', r.text), el('div', 'dt', 'Reminder · ' + whenLabel(r.at))); w.append(m);
+    const meta = el('div', 'meta'), x = el('button', 'linkbtn', '×'); x.type = 'button'; x.title = 'Remove reminder'; x.setAttribute('aria-label', 'Remove reminder'); x.onclick = () => removeReminder(r.id); meta.append(x); w.append(meta);
+    box.append(w);
+  }
+}
+function checkReminders() {
+  const now = Date.now(), due = (D.reminders || []).filter(r => r.at <= now);
+  if (!due.length) return;
+  D.reminders = D.reminders.filter(r => r.at > now); persist(); render();
+  for (const r of due) {
+    const late = now - r.at > 5 * 60e3;
+    const t = late ? `Heads up, you asked me to remind you ${whenLabel(r.at)}: ${r.text}.` : `Hey Kade, reminder: ${r.text}.`;
+    blip(); addMsg('jarvis', t); speak(t); toast('Reminder: ' + r.text);
+  }
+}
+function reminderCommand(l) {
+  let m, when, text;
+  const lead = /^(?:hey |ok |okay |so )?(?:can you |could you |please )?(?:remind me|set a reminder|set me a reminder|add a reminder)/i;
+  if (!lead.test(l)) return false;
+  const rest = l.replace(lead, '').replace(/^ for /, ' ').trim();
+  const WHEN = '(in \\S+ (?:minutes?|mins?|hours?|hrs?)|in (?:half an hour|an hour)|(?:today |tonight |tomorrow )?(?:at |around )?\\d{1,2}(?::?\\d{2})? ?(?:am|pm)?(?: today| tonight| tomorrow)?|tomorrow(?: morning| arvo| afternoon| evening)?|tonight)';
+  if ((m = rest.match(new RegExp('^' + WHEN + ' (?:to |that |about )?(.+)$', 'i')))) { when = m[1]; text = m[2] }
+  else if ((m = rest.match(new RegExp('^(?:to |that |about )?(.+?) ' + WHEN + '$', 'i')))) { text = m[1]; when = m[2] }
+  else return false;
+  const at = parseWhen(when); if (!at || !text) return false;
+  const r = addReminder(at, text.replace(/^(to|that|about) /i, ''));
+  const say = `Sweet, I'll remind you ${/^in /i.test(when) ? when.toLowerCase() : whenLabel(r.at)} to ${r.text}.`;
+  addMsg('jarvis', say); speak(say); return true;
+}
+
+/* ---------- end-of-day wrap-up ---------- */
+function wrapUp(display) {
+  LS.set('wrapDone', localISO());
+  const label = new Date().toLocaleDateString('en-AU', { timeZone: TZ, weekday: 'short', day: 'numeric', month: 'short' });
+  ask(`[End-of-day wrap-up for today. Talk to me like a mate, at most 5 flowing spoken sentences: what came in today (revenue and sales), today's scoreboard numbers, calls today, tasks done versus still open, one genuine win to feel good about, and the top 1 to 3 things to hit first tomorrow. Then save it by including this action with a short written summary (numbers, wins, open items, tomorrow's top 3): {"op":"add","kind":"note","name":"Wrap-up ${label}","detail":"..."}]`, display);
+}
+function offerWrap() {
+  const d = localISO(), h = Number(new Intl.DateTimeFormat('en-GB', { timeZone: TZ, hour: 'numeric', hourCycle: 'h23' }).format(new Date()));
+  if (h < 18 || LS.get('wrapDone', '') === d || LS.get('wrapOffered', '') === d || S.busy || speaking() || !ST?.brain) return;
+  LS.set('wrapOffered', d);
+  const t = 'Getting late, mate, want me to wrap up your day? Just say wrap up.'; addMsg('jarvis', t); speak(t);
+}
+$('#wrapBtn').onclick = () => { stopSpeaking(); wrapUp('Wrap up my day') };
+
 function followUps(display) {
   const c = coldLeads();
   ask(c.length ? `[Draft a short, personal follow-up DM for each lead that needs a follow-up: ${c.map(l => l.name).join(', ')}. Use what's in their records. Put all the messages in ONE draft titled "Follow-ups", each headed with the lead's name. Speak one sentence only.]` : '[I asked for follow-ups. No leads need one right now. Tell me that in one line and suggest one specific way to generate new leads today.]', display);
@@ -717,11 +830,11 @@ async function loadCal() {
 async function loadNP() { try { SP = await api('/api/spotify') } catch (e) { if (e.code === 'locked') return; SP = SP || { configured: true, linked: true } } renderNP() }
 async function spotify(body) {
   try { const r = await api('/api/spotify', { method: 'POST', body: JSON.stringify(body) }); if (r.now) { SP = { ...SP, ...r.now, configured: true, linked: true } } setTimeout(loadNP, 1200); renderNP(); return { ok: true, said: r.said } }
-  catch (e) { return { ok: false, error: e.code === 'not_linked' ? 'Spotify isn\'t connected yet, sir. It\'s in Settings.' : e.code === 'not_configured' ? 'Spotify isn\'t set up yet, sir.' : e.message } }
+  catch (e) { return { ok: false, error: e.code === 'not_linked' ? 'Spotify isn\'t connected yet, mate. It\'s in Settings.' : e.code === 'not_configured' ? 'Spotify isn\'t set up yet.' : e.message } }
 }
 async function calendar(body) {
   try { const r = await api('/api/google', { method: 'POST', body: JSON.stringify(body) }); loadCal(); return { ok: true, said: r.said } }
-  catch (e) { return { ok: false, error: e.code === 'not_linked' ? 'Your Google Calendar isn\'t connected yet, sir.' : e.code === 'not_configured' ? 'Google Calendar isn\'t set up yet, sir.' : e.message } }
+  catch (e) { return { ok: false, error: e.code === 'not_linked' ? 'Your Google Calendar isn\'t connected yet.' : e.code === 'not_configured' ? 'Google Calendar isn\'t set up yet.' : e.message } }
 }
 
 // Announce new Whop sales out loud
@@ -736,9 +849,9 @@ function announceSales() {
   const rev = revenue(), g = D.goals || {};
   const total = fresh.reduce((a, p) => a + p.amount, 0);
   const who = fresh.length === 1 ? `${fresh[0].name.split(' ')[0]} just bought ${fresh[0].product} for ${money(fresh[0].amount)}` : `${fresh.length} new sales just came in, ${money(total)} in total`;
-  const goalLine = g.monthly ? ` That puts ${$('#lblM').textContent} at ${money(rev.month)}, ${Math.round(rev.month / g.monthly * 100)} percent of target.` : ` That brings the month to ${money(rev.month)}.`;
+  const goalLine = g.monthly ? `, that puts ${$('#lblM').textContent} at ${money(rev.month)}, ${Math.round(rev.month / g.monthly * 100)} percent of your goal.` : `, that brings the month to ${money(rev.month)}.`;
   addMsg('sale', '◆ NEW SALE · ' + who.toUpperCase());
-  speak('Sir, a new sale. ' + who + '.' + goalLine);
+  speak('Let\'s go, new sale! ' + who + goalLine);
 }
 
 // Heads-up ten minutes before calendar events
@@ -754,7 +867,7 @@ function checkUpcoming() {
       const title = e.title.toLowerCase();
       const who = D.records.find(r => (r.kind === 'lead' || r.kind === 'client') && r.name && r.name.split(' ')[0].length >= 3 && title.includes(r.name.toLowerCase().split(' ')[0]));
       if (who && ST?.brain && !S.busy) ask(`[Call prep: "${e.title}" starts in ${Math.round(mins)} minutes with ${who.name}. Using their record, give me a spoken 3-sentence prep: who they are, the angle to take, and the likely objection with how to handle it. Put a fuller prep sheet in a draft titled "Call prep: ${who.name}".]`, 'Call prep: ' + e.title);
-      else { const t = `Sir, ${e.title} starts in ${Math.round(mins)} minutes.`; addMsg('jarvis', t); speak(t) }
+      else { const t = `Heads up, ${e.title} starts in ${Math.round(mins)} minutes.`; addMsg('jarvis', t); speak(t) }
     }
   }
 }
@@ -768,7 +881,7 @@ function startTimer(minutes, label) {
 function tickTimer() {
   if (!timer) { $('#timerChip').hidden = true; return }
   const left = timer.end - Date.now();
-  if (left <= 0) { clearInterval(timer.iv); const l = timer.label; timer = null; $('#timerChip').hidden = true; const t = `Sir, your ${l.toLowerCase()} is up.`; addMsg('jarvis', t); speak(t); return }
+  if (left <= 0) { clearInterval(timer.iv); const l = timer.label; timer = null; $('#timerChip').hidden = true; const t = `Your ${l.toLowerCase()} is up.`; addMsg('jarvis', t); speak(t); return }
   const m = Math.floor(left / 60000), s = Math.floor(left / 1000) % 60;
   $('#timerChip').hidden = false; $('#timerChip').textContent = timer.label.toUpperCase() + ' ' + m + ':' + String(s).padStart(2, '0');
 }
@@ -778,7 +891,7 @@ const APPS = { excel: ['https://excel.new', 'Open Excel'], word: ['https://word.
 function openApp(app, url) {
   let target = APPS[app] || null;
   if (!target && /^https:\/\//i.test(url || '')) target = [url, 'Open link'];
-  if (!target) return { ok: false, error: 'I don\'t know how to open that one yet, sir.' };
+  if (!target) return { ok: false, error: 'I don\'t know how to open that one yet.' };
   const w = window.open(target[0], '_blank');
   if (w) { try { w.opener = null } catch {} } else addLinkCard(target[1], target[0]);
   return { ok: true };
@@ -798,10 +911,13 @@ KADE'S BUSINESS: RISE AGENCY
 Kade runs Rise Agency. People working in high-ticket sales buy into Rise's mentorship/service so they can build a strong sales portfolio and land roles with good commission instead of bad offers. Kade spent 1.5 years stuck in bad-commission roles, which is why he built Rise. His revenue is simply how many people he sells on the Rise mentorship/service. Sales through Whop are tracked automatically. His pipeline: leads (people interested) -> booked sales calls -> clients (people who bought).
 
 YOUR PERSONALITY
-Dry, calm, witty British butler with a sharp business mind. Address him as "sir" now and then, not every sentence. Loyal, quick, understated humour, never gushing. Expert in high-ticket sales, closing, objection handling, DM and call scripts, content that drives leads, offers and pricing, and running a lean agency. Push him toward his revenue goals with specific, practical moves.
+You're Kade's right-hand man and his mate: relaxed, casual, quick-witted, a bit cheeky, loyal, and genuinely on his side. He's in Brisbane, so everyday Aussie-friendly language is good. Call him Kade or "mate" now and then, never "sir", and never sound formal, stiff or corporate. Keep the Jarvis confidence and dry humour.
+You're also the smartest person he knows. You can help with ANYTHING: sales, closing, objections, DMs and call scripts, content, offers and pricing, running the agency, money, marketing, mindset, fitness, health, relationships, tech, writing, maths, general knowledge, whatever he throws at you. Think it through properly and give real, specific, useful answers like a genius friend would, not generic advice. If you're not sure about something current, say so honestly rather than making it up. Push him toward his revenue goals with practical moves.
 
 HOW TO REPLY
-- Your words are spoken aloud. Talk like a person: natural rhythm, contractions, short sentences. Keep spoken replies to 1-3 sentences unless he asks for more. No markdown, bullets, emoji or URLs in spoken text.
+- Your words are spoken aloud, so talk exactly like a mate chatting: casual words, contractions, natural flow. Link ideas into longer flowing sentences with commas, "and", "so", "but", because every full stop makes the voice pause. Don't write lots of short choppy sentences.
+- Quick chat or simple questions: 1-2 sentences. When he wants help, advice or an explanation, give a proper, complete answer (up to about 6 spoken sentences), and if it's long or detailed (steps, lists, scripts, plans), say the key point out loud and put the full thing in a DRAFT on screen.
+- No markdown, bullets, emoji or URLs in spoken text.
 - For written pieces (DMs, emails, scripts, content, plans, offers), give ONE short spoken sentence, then put the piece inside [[DRAFT title="short title"]] ... [[/DRAFT]]. It's shown on screen, not read aloud.
 - To DO things, end your reply with an actions block. Your spoken sentence should confirm what you're doing. Never read the block aloud or mention ids. IMPORTANT: if you say you are doing something (playing music, saving a lead, logging numbers, setting a goal), you MUST include the matching action in the ACTIONS block, otherwise it does not happen. Never claim you did something without the action.
 [[ACTIONS]][ ...one or more actions... ][[/ACTIONS]]
@@ -819,6 +935,7 @@ Actions:
   Calendar: {"op":"calendar","do":"create","title":"Sales call - Marcus","start":"YYYY-MM-DDTHH:MM","minutes":45,"description":"..."}; {"op":"calendar","do":"move","id":"<event id>","start":"...","minutes":30}; {"op":"calendar","do":"delete","id":"<event id>"}. Times are Brisbane local. Only use calendar actions when CALLS & CALENDAR comes from Google Calendar. If it comes from Zoom you can read his booked calls (count them, prep him, remind him) but can't book or move them yet, so tell him that.
   Open apps: {"op":"open","app":"excel|word|powerpoint|gmail|calendar|whop|spotify|instagram"} or {"op":"open","url":"https://..."}. "New spreadsheet" -> excel.
   Timer: {"op":"timer","minutes":25,"label":"Focus"}  cancel: {"op":"timer","minutes":0}
+  Reminder at a set time: {"op":"remind","at":"YYYY-MM-DDTHH:MM","text":"message Tom about the offer"} (Brisbane time). Cancel one: {"op":"unremind","id":"<reminder id>"}
   Listening: {"op":"quiet"} when he says go quiet / stop listening / give me a minute.
   Scoreboard: {"op":"stats","dms":40,"booked":3,"taken":2,"closes":1} ADDS to today's numbers (only include what he mentions). Add "mode":"set" to overwrite, or "date":"YYYY-MM-DD" for another day.
   Client progress: clients have progress (onboarding|building portfolio|interviewing|landed role) and result (e.g. "Landed a $150k OTE closer role at X"). Update these when he tells you. Client results are case studies: use them in content, DMs and sales calls.
@@ -829,6 +946,8 @@ Actions:
 TODAY: ${when} (Brisbane)
 REVENUE (USD, Whop + manual): today ${money(rev.today)}, this week ${money(rev.week)}, this month ${money(rev.month)} from ${rev.countMonth} sales, this year ${money(rev.year)}
 GOALS: monthly ${D.goals?.monthly ? money(D.goals.monthly) : 'not set'}, yearly ${D.goals?.yearly ? money(D.goals.yearly) : 'not set'}
+PACE THIS MONTH: ${paceText(false)}
+REMINDERS SET: ${JSON.stringify((D.reminders || []).map(r => ({ id: r.id, at: new Date(r.at).toLocaleString('en-AU', { timeZone: TZ, weekday: 'short', hour: 'numeric', minute: '2-digit' }), text: r.text })))}
 WHOP: ${JSON.stringify(whop)}
 CALLS & CALENDAR (next 8 days, from ${CAL?.source === 'zoom' ? 'Zoom' : 'Google Calendar'}): ${JSON.stringify(cal)}
 MUSIC: ${JSON.stringify(music)}
@@ -852,14 +971,14 @@ function parse(t, final) {
   return { say, draft, actions };
 }
 
-async function brain(messages, tier, onText, signal) {
+async function brain(messages, tier, onText, signal, extra = {}) {
   // Retries quietly when Google is busy or the connection blips, so a hiccup never reaches you.
   const waits = [0, 1500, 3500, 6000];
   let last;
   for (let n = 0; n < waits.length; n++) {
     if (waits[n]) { await new Promise(res => setTimeout(res, waits[n])); if (signal?.aborted) throw { name: 'AbortError' } }
     let got = '';
-    try { return await brainOnce(messages, tier, t => { got = t; onText(t) }, signal) }
+    try { return await brainOnce(messages, tier, t => { got = t; onText(t) }, signal, extra) }
     catch (e) {
       last = e;
       if (e.name === 'AbortError' || e.code === 'locked' || !e.retry) throw e;
@@ -868,16 +987,16 @@ async function brain(messages, tier, onText, signal) {
   }
   throw last;
 }
-async function brainOnce(messages, tier, onText, signal) {
+async function brainOnce(messages, tier, onText, signal, extra = {}) {
   let r;
-  try { r = await fetch('/api/brain', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ system: rules(), messages, tier }), signal }) }
-  catch (e) { if (e.name === 'AbortError') throw e; throw { code: 'net', retry: true, message: navigator.onLine === false ? "I've lost the internet connection, sir." : "I couldn't reach my servers just then, sir." } }
+  try { r = await fetch('/api/brain', { method: 'POST', credentials: 'same-origin', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ system: rules(), messages, tier, ...extra }), signal }) }
+  catch (e) { if (e.name === 'AbortError') throw e; throw { code: 'net', retry: true, message: navigator.onLine === false ? "Looks like the internet dropped out, mate." : "Couldn't reach my servers just then, give me a sec and try again." } }
   if (r.status === 401) { lock(); throw { code: 'locked' } }
   if (!r.ok) { let m = ''; try { m = (await r.json()).error } catch {} throw { code: 'api', retry: r.status >= 500 || r.status === 408, status: r.status, message: m || ('Error ' + r.status) } }
   const rd = r.body.getReader(), dec = new TextDecoder(); let buf = '', text = '';
   for (;;) {
     let value, done;
-    try { ({ value, done } = await rd.read()) } catch (e) { if (e.name === 'AbortError') throw e; if (text) break; throw { code: 'net', retry: true, message: 'The connection dropped, sir.' } }
+    try { ({ value, done } = await rd.read()) } catch (e) { if (e.name === 'AbortError') throw e; if (text) break; throw { code: 'net', retry: true, message: 'The connection dropped.' } }
     if (done) break;
     buf += dec.decode(value, { stream: true });
     let i;
@@ -889,7 +1008,7 @@ async function brainOnce(messages, tier, onText, signal) {
       else if (d.type === 'error') { if (text) return text; throw { code: 'api', retry: true, message: d.error?.message || 'Stream error' } }
     }
   }
-  if (!text.trim()) throw { code: 'api', retry: true, message: 'I drew a blank there, sir.' };
+  if (!text.trim()) throw { code: 'api', retry: true, message: 'I drew a blank there.' };
   return text;
 }
 
@@ -917,7 +1036,11 @@ async function ask(userText, display) {
   S.history.push({ role: 'user', content: userText });
   while (S.history.length > 16) S.history.shift();
   while (S.history.length && S.history[0].role !== 'user') S.history.shift();
-  const heavy = /draft|write|script|email|\bdms?\b|proposal|objection|outline|caption|content idea|post (for|about)|weekly report/i.test(userText);
+  const plain = userText.replace(/^\[[\s\S]*?\]\s*/, '');
+  const search = /\b(latest|news|today'?s|current(ly)?|right now|price of|weather|who (is|won|was)|scores?|stock|crypto|bitcoin|recent(ly)?|trending|what happened|look up|search)\b/i.test(plain) && !/\b(my|our) (revenue|sales|calls|leads|clients|goal|numbers|tasks|reminders)\b/i.test(plain);
+  // Real questions and requests for help get the smarter, deeper-thinking setup; quick chat stays fast.
+  const heavy = /draft|write|script|email|\bdms?\b|proposal|objection|outline|caption|content idea|post (for|about)|weekly report|wrap-up/i.test(userText)
+    || /^(how|why|what should|what would|what's the best|what is the best|should i|can you help|help me|explain|teach|plan|give me|figure|work out|compare|what do you think|is it|would it|could you)/i.test(plain) || plain.length > 90 || search;
   const bubble = addMsg('jarvis', '…');
   const my = ctl = new AbortController();
   S.busy = true; setPhase('thinking'); spoken = 0;
@@ -927,11 +1050,11 @@ async function ask(userText, display) {
       const p = parse(t, false); bubble.textContent = p.say || '…'; $('#log').scrollTop = 1e9;
       if (p.draft) showDraft(p.draft);
       feedSpeech(p.say, false);
-    }, my.signal);
+    }, my.signal, search ? { search: true } : {});
     const p = parse(text, true);
-    bubble.textContent = p.say || (p.draft ? 'The draft is on screen, sir.' : 'Done.');
+    bubble.textContent = p.say || (p.draft ? 'It\'s up on screen for you.' : 'Done.');
     if (p.draft) showDraft(p.draft);
-    feedSpeech(p.say || (p.draft ? 'The draft is on screen, sir.' : ''), true);
+    feedSpeech(p.say || (p.draft ? 'It\'s up on screen for you.' : ''), true);
     S.history.push({ role: 'assistant', content: text.replace(/\[\[ACTIONS\]\][\s\S]*$/, '').trim() || 'Done.' });
     S.convoUntil = Date.now() + 45000;
     await runActions(p.actions);
@@ -942,7 +1065,7 @@ async function ask(userText, display) {
     else {
       // Friendly, plain message. Raw technical text never gets read out.
       let msg = String(e.message || '');
-      if (!/sir/.test(msg) || msg.length > 180) msg = e.status === 429 ? "I've hit today's free AI limit, sir. Music and the dashboard still work." : "Google's AI didn't answer after a few tries, sir. Ask me again in a moment.";
+      if (msg.length > 180 || /error|exception|status|quota|model|invalid|\{/i.test(msg)) msg = e.status === 429 ? "I've hit today's free AI limit, but music and the dashboard still work." : "Google's AI didn't answer after a few tries, give it a sec and ask me again.";
       bubble.textContent = msg; speak(msg);
     }
   } finally {
@@ -966,6 +1089,8 @@ async function runActions(list) {
         case 'open': { const r = openApp(a.app, a.url); if (!r.ok) problems.push(r.error); break }
         case 'timer': if (Number(a.minutes) > 0) startTimer(Number(a.minutes), a.label); else { clearInterval(timer?.iv); timer = null; tickTimer() } break;
         case 'quiet': goQuiet(); break;
+        case 'remind': { const at = new Date(String(a.at || '')).getTime(); if (at && a.text) { addReminder(at, a.text); changed++ } else problems.push("I couldn't work out when to remind you."); break }
+        case 'unremind': if (removeReminder(a.id)) changed++; break;
         case 'stats': setStats(a.date || localISO(), a, a.mode); changed++; break;
       }
     } catch (e) { problems.push(e.message || String(e)) }
@@ -999,7 +1124,7 @@ let aiOffUntil = 0;
 const useAI = () => !P.elKey && P.aiVoiceOn === true && !!ST?.voice && Date.now() > aiOffUntil; // opt-in: it sounds human but takes a few seconds
 const speaking = () => pending > 0;
 function done1() { pending = Math.max(0, pending - 1); if (!pending) { resumeMic(); setPhase(S.busy ? 'thinking' : idlePhase()) } }
-function prep(text) { return text.replace(/\$(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s?k\b/gi, '$1 thousand dollars').replace(/\$(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)/g, '$1 dollars').replace(/\s+/g, ' ').trim() }
+function prep(text) { return text.replace(/\s+[—–]\s+/g, ', ').replace(/\$(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s?k\b/gi, '$1 thousand dollars').replace(/\$(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)/g, '$1 dollars').replace(/\s+/g, ' ').trim() }
 function speak(text) {
   text = prep(text || ''); if (P.muted || !text) return;
   pending++; pauseMic(); setPhase('speaking');
@@ -1051,11 +1176,14 @@ function stopSpeaking() {
   if (pending) { pending = 0; resumeMic() }
 }
 function feedSpeech(say, final) {
-  // Speak each sentence the moment it arrives instead of waiting for the whole reply.
+  // First sentence goes out the moment it arrives. After that, sentences are grouped into bigger chunks,
+  // because every separate chunk makes the voice stop, so he flows like normal talking.
   for (;;) {
     const rest = say.slice(spoken); if (!rest.trim()) return;
-    const m = /[.!?]["')]?\s/.exec(rest);
-    const end = m ? m.index + m[0].length : final ? rest.length : -1;
+    let end = -1;
+    if (spoken === 0) { const m = /[.!?]["')]?\s/.exec(rest); if (m) end = m.index + m[0].length }
+    else { const re = /[.!?]["')]?\s/g; let m, last = -1; while ((m = re.exec(rest))) { last = m.index + m[0].length; if (last >= 180) break } if (last >= 180) end = last }
+    if (end < 0 && final) end = rest.length;
     if (end <= 0) return;
     const chunk = rest.slice(0, end).trim(); spoken += end;
     if (chunk) speak(chunk);
@@ -1131,6 +1259,8 @@ function quickCommand(t) {
   if (/^(turn it|volume) down$/.test(l)) { spotify({ do: 'volume', value: Math.max(0, (SP?.volume ?? 50) - 15) }); return true }
   if (/^(lock|lock up|lock (the )?screen|lock it)$/.test(l)) { lock(); return true }
   if (/^(go quiet|stop listening|give me a (minute|second)|be quiet|quiet)$/.test(l)) { goQuiet(); addMsg('sys', 'Quiet. Say "Jarvis" when you need me.'); return true }
+  if (/^(let'?s )?(wrap up|wrap it up|wrap things up|wrap up (my|the) day|end of (the )?day|end of day (wrap|report|review|wrap up)|daily wrap ?up|close out (my|the) day)$/.test(l)) { wrapUp(t); return true }
+  if (reminderCommand(t.replace(/[.!?,]/g, '').replace(/\s+/g, ' ').trim())) return true;
   if (instantAnswer(l)) return true;
   // Music: handled instantly, no AI round trip
   const pm = l.match(/^(?:(?:can you|could you|please|go ahead and|now)\s+)*(?:play|put on|start|chuck on)\s+(?:me\s+)?(?:some\s+)?(.+)$/);
@@ -1149,27 +1279,27 @@ function instantAnswer(l) {
   l = l.replace(/^(hey|ok|okay|so|um|uh|right)\s+/, '').replace(/\s+(please|for me|mate|sir)$/, '').trim();
   const reply = t => { addMsg('jarvis', t); speak(t); return true };
   let m;
-  if (/^(what('?s| is) the time|what time is it)( now| right now)?$/.test(l)) return reply('It\'s ' + localTime(new Date()) + ', sir.');
+  if (/^(what('?s| is) the time|what time is it)( now| right now)?$/.test(l)) return reply('It\'s ' + localTime(new Date()) + '.');
   if (/^(what('?s| is) (the date|today'?s date)|what day is it( today)?)$/.test(l)) return reply('It\'s ' + new Date().toLocaleDateString('en-AU', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long' }) + '.');
   // revenue
   if (!/should|would|could|charge|price|if /.test(l) && (m = l.match(/^(?:how much (?:money )?(?:have i|did i|have we|did we|we've|i've)? ?(?:made|make|done|sold|brought in|earned)|what(?:'?s| is| are) (?:my |our |the )?(?:revenue|sales|numbers)(?: at| looking like| like)?)(?: so far)?(?: (today|this week|this month|this year|for the (?:week|month|year)))?(?: so far)?$/))) {
     const per = (m[1] || 'this month').replace('for the ', 'this ');
     const key = { today: 'today', 'this week': 'week', 'this month': 'month', 'this year': 'year' }[per] || 'month';
     const rev = revenue(), amt = rev[key] || 0, goal = key === 'month' ? D.goals?.monthly : key === 'year' ? D.goals?.yearly : 0;
-    let t = amt ? `${money(amt)} ${per}, sir.` : `Nothing yet ${per}, sir.`;
+    let t = amt ? `${money(amt)} ${per}.` : `Nothing yet ${per}.`;
     if (goal) t += ` That's ${Math.round(amt / goal * 100)}% of your ${money(goal)} goal, ${money(Math.max(0, goal - amt))} to go.`;
     return reply(t);
   }
   if (/^how (far|close) (am i|are we|off am i|away am i) (from|to|off)? ?(my |the |our )?(monthly |month'?s |yearly |year'?s )?(goal|target)/.test(l)) {
     const yearly = /year/.test(l), rev = revenue(), amt = yearly ? rev.year : rev.month, goal = yearly ? D.goals?.yearly : D.goals?.monthly;
-    if (!goal) return reply(`You haven't set a ${yearly ? 'yearly' : 'monthly'} goal yet, sir. Just tell me the number.`);
-    return reply(amt >= goal ? `You've hit it, sir. ${money(amt)} against a ${money(goal)} goal.` : `${money(goal - amt)} to go, sir. You're at ${money(amt)} of ${money(goal)}, ${Math.round(amt / goal * 100)}%.`);
+    if (!goal) return reply(`You haven't set a ${yearly ? 'yearly' : 'monthly'} goal yet, mate, just tell me the number.`);
+    return reply(amt >= goal ? `You've smashed it, ${money(amt)} against a ${money(goal)} goal.` : `${money(goal - amt)} to go, you're at ${money(amt)} of ${money(goal)}, ${Math.round(amt / goal * 100)}%.`);
   }
   // calls
   const evs = (CAL?.events || []).filter(e => !e.allDay && new Date(e.end || e.start) > new Date());
   if (/^(when|what)('?s| is) (my )?next (call|meeting|zoom)$|^who('?s| is) (my )?next (call|meeting)$/.test(l)) {
     if (!CAL?.configured) return false;
-    const e = evs[0]; if (!e) return reply('Nothing booked coming up, sir.');
+    const e = evs[0]; if (!e) return reply('Nothing booked coming up.');
     const d = localISO(new Date(e.start)), day = d === localISO() ? 'today' : d === shiftISO(localISO(), 1) ? 'tomorrow' : new Date(e.start).toLocaleDateString('en-AU', { timeZone: TZ, weekday: 'long' });
     return reply(`${e.title}, ${day} at ${localTime(new Date(e.start))}.`);
   }
@@ -1177,10 +1307,14 @@ function instantAnswer(l) {
     if (!CAL?.configured) return false;
     const which = m[1] || 'today', t0 = localISO(), day = e => localISO(new Date(e.start));
     const list = which === 'today' ? evs.filter(e => day(e) === t0) : which === 'tomorrow' ? evs.filter(e => day(e) === shiftISO(t0, 1)) : evs.filter(e => day(e) <= shiftISO(t0, 7));
-    if (!list.length) return reply(`No calls ${which}, sir.`);
+    if (!list.length) return reply(`No calls ${which}.`);
     const first = list.slice(0, 3).map(e => `${e.title} at ${localTime(new Date(e.start))}`).join(', ');
     return reply(`${list.length} ${list.length === 1 ? 'call' : 'calls'} ${which}${which === 'this week' ? '' : ': ' + first}.`);
   }
+  // pace + reminders
+  if (/^(am i|are we) (on (track|pace)|going to hit (my|the) goal)|^(what'?s|what is|how'?s) (my|our) pace|^(will|am) i (hit|make) (my|the) (monthly )?goal|^pace( check)?$/.test(l)) { if (!D.goals?.monthly) return reply("You haven't set a monthly goal yet, mate, just tell me the number."); return reply(paceText(false)) }
+  if (/^(what are|what'?s|any|show|list|read) (my |me my )?reminders|^(do i have any|have i got any) reminders/.test(l)) { const rs = (D.reminders || []).slice().sort((a, b) => a.at - b.at); return reply(rs.length ? rs.slice(0, 4).map(r => `${r.text} ${whenLabel(r.at)}`).join(', ') + '.' : 'No reminders set.') }
+  if (/^(cancel|clear|delete|remove) (all )?(my |the )?reminders?$/.test(l)) { const n = (D.reminders || []).length; D.reminders = []; persist(); render(); return reply(n ? 'Done, cleared them.' : 'You had none anyway.') }
   // timers
   if ((m = l.match(/^(?:set|start|put on|give me)(?: me)? (?:a |an )?(?:timer for )?(\d+|[a-z]+(?: [a-z]+)?)[ -]?(minute|min|hour)s?(?: long)?(?: (focus|work|break|call|timer))?(?: timer)?$/))) {
     const n = numOf(m[1]); if (!n) return false;
@@ -1191,7 +1325,7 @@ function instantAnswer(l) {
   // apps
   if ((m = l.match(/^(?:open|pull up|bring up|launch|start|make|create)(?: up)?(?: me)?(?: a| an| my| the)?(?: new| blank)? (excel|spreadsheet|sheet|word|word doc|document|doc|powerpoint|slides|presentation|gmail|email|inbox|calendar|whop|spotify|instagram|dms)(?: (?:sheet|file|doc|page|dashboard))?$/))) {
     const app = { spreadsheet: 'excel', sheet: 'excel', 'word doc': 'word', document: 'word', doc: 'word', slides: 'powerpoint', presentation: 'powerpoint', email: 'gmail', inbox: 'gmail', dms: 'instagram' }[m[1]] || m[1];
-    const r = openApp(app); return reply(r.ok ? 'Done, sir.' : r.error);
+    const r = openApp(app); return reply(r.ok ? 'Done.' : r.error);
   }
   // music extras
   if (/^(previous|go back|last|back)( song| track| one)?$|^play (the )?(previous|last) (song|track)( again)?$/.test(l)) { spotify({ do: 'previous' }); return true }
@@ -1203,7 +1337,7 @@ async function playMusic(q, kind) {
   setPhase('thinking');
   const r = await spotify({ do: 'play', query: q, kind });
   const t = r.ok ? (r.said || 'Playing ' + q) + '.' : r.error;
-  addMsg('jarvis', t); speak(r.ok ? 'Right away, sir.' : t);
+  addMsg('jarvis', t); speak(r.ok ? 'On it.' : t);
   if (!speaking()) setPhase(idlePhase());
 }
 function heard(raw) {
@@ -1216,7 +1350,7 @@ function heard(raw) {
   const engaged = named || P.listen === 'always' || Date.now() < S.convoUntil;
   if (!engaged) { $('#interim').textContent = 'Heard "' + t + '". Say "Jarvis" first.'; return }
   if (quickCommand(body)) { addMsg('you', t); S.convoUntil = Date.now() + 45000; return }
-  if (named && body.length < 3) { addMsg('you', t); const r = ['Sir?', 'Yes, sir?', 'At your service.'][Math.floor(Math.random() * 3)]; addMsg('jarvis', r); speak(r); S.convoUntil = Date.now() + 45000; return }
+  if (named && body.length < 3) { addMsg('you', t); const r = ['Yeah?', 'What\'s up?', 'I\'m here.'][Math.floor(Math.random() * 3)]; addMsg('jarvis', r); speak(r); S.convoUntil = Date.now() + 45000; return }
   ask(body, t);
 }
 function wake(display) {
@@ -1264,6 +1398,9 @@ async function unlock() {
   loops.push(setInterval(() => document.visibilityState === 'visible' && loadWhop(), 60000));
   loops.push(setInterval(() => { loadCal() }, 5 * 60000));
   loops.push(setInterval(checkUpcoming, 30000));
+  loops.push(setInterval(checkReminders, 5000)); setTimeout(checkReminders, 1500);
+  loops.push(setInterval(offerWrap, 60000));
+  loops.push(setInterval(() => { const pl = $('#paceLine'); if (pl) pl.textContent = paceText(true) }, 5 * 60000));
   loops.push(setInterval(() => document.visibilityState === 'visible' && SP?.linked && loadNP(), 20000));
   loops.push(setInterval(() => pullData(false), 60000));
   const warm = () => document.visibilityState === 'visible' && fetch('/api/brain', { credentials: 'same-origin' }).catch(() => {});
@@ -1320,7 +1457,7 @@ function closeSettings() {
 $('#setBtn').onclick = openSettings; $('#closeSet').onclick = closeSettings;
 $('#modal').onclick = e => { if (e.target.id === 'modal') closeSettings() };
 $('#modal').onkeydown = e => { if (e.key === 'Escape') closeSettings() };
-$('#testVoice').onclick = () => { readSettings(); stopSpeaking(); speak('Good evening, sir. Revenue is climbing nicely, and your next call is in forty minutes.') };
+$('#testVoice').onclick = () => { readSettings(); stopSpeaking(); speak('Hey Kade, revenue\'s climbing nicely and your next call is in about forty minutes, so you\'ve got time to grab a coffee.') };
 function muteUI() { $('#muteBtn').setAttribute('aria-pressed', !!P.muted); $('#muteBtn').setAttribute('aria-label', P.muted ? 'Unmute voice' : 'Mute voice'); $('#spk').style.opacity = P.muted ? .35 : 1 }
 $('#muteBtn').onclick = () => { P.muted = !P.muted; if (P.muted) stopSpeaking(); savePrefs(); muteUI() };
 
