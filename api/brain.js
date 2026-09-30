@@ -8,6 +8,7 @@ const enc = new TextEncoder();
 const delta = text => enc.encode('data: ' + JSON.stringify({ type: 'content_block_delta', delta: { type: 'text_delta', text } }) + '\n\n');
 
 const tired = globalThis.__jarvisTired || (globalThis.__jarvisTired = new Map()); // model -> retry-after time
+const noThink = globalThis.__jarvisNoThink || (globalThis.__jarvisNoThink = new Set()); // models that reject the thinking setting
 async function gemini(key, b, messages, signal) {
   // Several free models, each with its own daily allowance. If one is used up, fall through to the next.
   const quick = ['gemini-3.1-flash-lite', 'gemini-3.5-flash-lite', 'gemini-3.5-flash', 'gemini-3-flash-preview'];
@@ -20,12 +21,15 @@ async function gemini(key, b, messages, signal) {
     const last = contents[contents.length - 1];
     if (last && last.role === role) last.parts[0].text += '\n\n' + m.content; else contents.push({ role, parts: [{ text: m.content }] });
   }
-  const body = JSON.stringify({ systemInstruction: { parts: [{ text: String(b.system || '').slice(0, 200000) }] }, contents, generationConfig: { maxOutputTokens: b.tier === 'quick' ? 1200 : 3000, temperature: 0.8 } });
+  // Minimal "thinking" so replies start fast. If a model doesn't accept that setting, it's remembered and left off.
+  const body = model => JSON.stringify({ systemInstruction: { parts: [{ text: String(b.system || '').slice(0, 200000) }] }, contents, generationConfig: { maxOutputTokens: b.tier === 'quick' ? 1200 : 3000, temperature: 0.8, ...(noThink.has(model) ? {} : { thinkingConfig: { thinkingLevel: 'minimal' } }) } });
   let r = null, lastMsg = '', limited = false, busy = false;
   // Two passes: if every model is busy ("high demand"), wait a moment and go round once more.
   for (let pass = 0; pass < 2 && !r; pass++) {
     if (pass) { if (!busy) break; await new Promise(res => setTimeout(res, 1500)) }
-    for (const model of chain) {
+    const queue = [...chain];
+    for (let qi = 0; qi < queue.length; qi++) {
+      const model = queue[qi];
       if (!pass && (tired.get(model) || 0) > Date.now()) { limited = true; continue }
       if (pass && (tired.get(model) || 0) > Date.now() + 60e3) continue; // skip only the ones out for the day
       let res;
@@ -34,13 +38,14 @@ async function gemini(key, b, messages, signal) {
       const timer = setTimeout(stop, b.tier === 'quick' ? 7000 : 18000); // if a model stalls, move on; the reply itself can stream longer
       try {
         res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse`, {
-          method: 'POST', signal: ac.signal, headers: { 'content-type': 'application/json', 'x-goog-api-key': key }, body
+          method: 'POST', signal: ac.signal, headers: { 'content-type': 'application/json', 'x-goog-api-key': key }, body: body(model)
         });
       } catch (e) { if (signal?.aborted) throw e; busy = true; lastMsg = 'timed out'; continue }
       finally { clearTimeout(timer) }
       if (res.ok) { r = res; break }
       try { lastMsg = (await res.json()).error.message } catch { lastMsg = 'Gemini answered ' + res.status }
       if (res.status === 429) { limited = true; tired.set(model, Date.now() + (/per.?day|daily|PerDay/i.test(lastMsg) ? 3600e3 : 60e3)); continue }
+      if (res.status === 400 && /think/i.test(lastMsg) && !noThink.has(model)) { noThink.add(model); queue.splice(qi + 1, 0, model); continue }
       if (res.status === 404 || res.status === 400) { tired.set(model, Date.now() + 6 * 3600e3); continue }
       if (res.status >= 500) { busy = true; tired.set(model, Date.now() + 30e3); continue } // "high demand": try another model
       return json({ error: lastMsg }, 502);
@@ -93,6 +98,9 @@ async function claude(key, b, messages, signal) {
   }
   return new Response(r.body, { headers: { 'content-type': 'text/event-stream', 'cache-control': 'no-store' } });
 }
+
+// The page pings this every few minutes so the server is already awake when you speak.
+export async function GET() { return json({ ok: true }) }
 
 export async function POST(req) {
   if (!isAuthed(req)) return locked();
