@@ -4,6 +4,7 @@
 
 AI brain: Google Gemini (free tier) via GEMINI_API_KEY, or Claude via ANTHROPIC_API_KEY.
 Sales: Whop connected via WHOP_API_KEY.
+Calls: Zoom Server-to-Server app "Jarvis" (ZOOM_ACCOUNT_ID / ZOOM_CLIENT_ID / ZOOM_CLIENT_SECRET / ZOOM_USER).
 Music: Spotify app "Jarvis" (SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET).
 
 This gets Jarvis live as your own private website in about 30 to 45 minutes. Do the steps in order. You only do this once.
