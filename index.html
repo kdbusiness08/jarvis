@@ -793,7 +793,7 @@ Dry, calm, witty British butler with a sharp business mind. Address him as "sir"
 HOW TO REPLY
 - Your words are spoken aloud. Talk like a person: natural rhythm, contractions, short sentences. Keep spoken replies to 1-3 sentences unless he asks for more. No markdown, bullets, emoji or URLs in spoken text.
 - For written pieces (DMs, emails, scripts, content, plans, offers), give ONE short spoken sentence, then put the piece inside [[DRAFT title="short title"]] ... [[/DRAFT]]. It's shown on screen, not read aloud.
-- To DO things, end your reply with an actions block. Your spoken sentence should confirm what you're doing. Never read the block aloud or mention ids.
+- To DO things, end your reply with an actions block. Your spoken sentence should confirm what you're doing. Never read the block aloud or mention ids. IMPORTANT: if you say you are doing something (playing music, saving a lead, logging numbers, setting a goal), you MUST include the matching action in the ACTIONS block, otherwise it does not happen. Never claim you did something without the action.
 [[ACTIONS]][ ...one or more actions... ][[/ACTIONS]]
 Actions:
   Records (kinds: lead, client, sale, task, note):
@@ -1032,7 +1032,7 @@ $('#micChip').onclick = () => { if (micWanted && rec) { if (S.quiet) { S.quiet =
 function goQuiet() { S.quiet = true; S.convoUntil = 0; micUI(); setPhase('idle') }
 
 const NAME = /\b(jarvis|jervis|javis|jarvus|jarvas|travis)\b/i;
-const STRIP_NAME = /^.*?\b(jarvis|jervis|javis|jarvus|jarvas|travis)\b[,.!?]?\s*/i;
+const STRIP_NAME = /^.*\b(jarvis|jervis|javis|jarvus|jarvas|travis)\b[,.!?]?\s*/i; // last mention wins, so corrections work
 function quickCommand(t) {
   const l = t.toLowerCase().replace(/[.!?,]/g, '').trim();
   if (/^(stop|stop talking|shut up|enough|that's enough)$/.test(l)) { stopSpeaking(); if (ctl) ctl.abort(); return true }
@@ -1043,7 +1043,23 @@ function quickCommand(t) {
   if (/^(turn it|volume) down$/.test(l)) { spotify({ do: 'volume', value: Math.max(0, (SP?.volume ?? 50) - 15) }); return true }
   if (/^(lock|lock up|lock (the )?screen|lock it)$/.test(l)) { lock(); return true }
   if (/^(go quiet|stop listening|give me a (minute|second)|be quiet|quiet)$/.test(l)) { goQuiet(); addMsg('sys', 'Quiet. Say "Jarvis" when you need me.'); return true }
+  // Music: handled instantly, no AI round trip
+  const pm = l.match(/^(?:(?:can you|could you|please|go ahead and|now)\s+)*(?:play|put on|start|chuck on)\s+(?:me\s+)?(?:some\s+)?(.+)$/);
+  if (pm && !/^(the )?music$/.test(pm[1])) {
+    let q = pm[1].replace(/\s*\b(?:on|and|from|with|in)?\s*spotify\b/g, ' ').replace(/\s*\b(please|for me|now)\b/g, ' ').trim();
+    const isPl = /\bplaylist\b/.test(q);
+    q = q.replace(/^(my|the|a)\s+/, '').replace(/\bplaylist\b/g, ' ').replace(/\s+/g, ' ').trim();
+    if (q) { playMusic(q, isPl ? 'playlist' : 'any'); return true }
+  }
   return false;
+}
+async function playMusic(q, kind) {
+  stopSpeaking(); if (ctl) ctl.abort();
+  setPhase('thinking');
+  const r = await spotify({ do: 'play', query: q, kind });
+  const t = r.ok ? (r.said || 'Playing ' + q) + '.' : r.error;
+  addMsg('jarvis', t); speak(r.ok ? 'Right away, sir.' : t);
+  if (!speaking()) setPhase(idlePhase());
 }
 function heard(raw) {
   const t = raw.trim(); if (!t || t.length < 2) return;
@@ -1052,9 +1068,9 @@ function heard(raw) {
   if (named) { S.quiet = false; micUI() }
   const body = named ? t.replace(STRIP_NAME, '') : t;
   if (/(daddy'?s home|that is home|i'?m home|wake up)/i.test(t) && (named || /daddy'?s home|i'?m home/i.test(t))) return wake(t);
-  if (quickCommand(body)) { S.convoUntil = Date.now() + 45000; return }
   const engaged = named || P.listen === 'always' || Date.now() < S.convoUntil;
   if (!engaged) { $('#interim').textContent = 'Heard "' + t + '". Say "Jarvis" first.'; return }
+  if (quickCommand(body)) { addMsg('you', t); S.convoUntil = Date.now() + 45000; return }
   if (named && body.length < 3) { addMsg('you', t); const r = ['Sir?', 'Yes, sir?', 'At your service.'][Math.floor(Math.random() * 3)]; addMsg('jarvis', r); speak(r); S.convoUntil = Date.now() + 45000; return }
   ask(body, t);
 }
