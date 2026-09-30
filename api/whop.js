@@ -19,6 +19,7 @@ export async function GET(req) {
   const { y, m, d, dow, off } = localNow();
   const yearStart = fromLocal(y, 0, 1, off), monthStart = fromLocal(y, m, 1, off), dayStart = fromLocal(y, m, d, off);
   const weekStart = fromLocal(y, m, d - ((dow + 6) % 7), off); // Monday
+  const lastWeekStart = new Date(weekStart.getTime() - 7 * 86400000);
   const company = process.env.WHOP_COMPANY_ID;
 
   const payments = [];
@@ -39,7 +40,7 @@ export async function GET(req) {
   }
   if (error && !payments.length) return json({ configured: true, error }, 502);
 
-  const sum = { today: 0, week: 0, month: 0, year: 0, countToday: 0, countMonth: 0, countYear: 0 };
+  const sum = { today: 0, week: 0, lastWeek: 0, month: 0, year: 0, countToday: 0, countMonth: 0, countYear: 0 };
   const recent = [];
   for (const pay of payments) {
     if (pay.status !== 'paid') continue;
@@ -50,10 +51,11 @@ export async function GET(req) {
     if (at >= yearStart) { sum.year += amount; sum.countYear++ }
     if (at >= monthStart) { sum.month += amount; sum.countMonth++ }
     if (at >= weekStart) sum.week += amount;
+    else if (at >= lastWeekStart) sum.lastWeek += amount;
     if (at >= dayStart) { sum.today += amount; sum.countToday++ }
     if (recent.length < 12) recent.push({ id: pay.id, amount, at: at.toISOString(), name: pay.user?.name || pay.user?.username || 'Someone', product: pay.product?.title || 'Rise' });
   }
-  for (const k of ['today', 'week', 'month', 'year']) sum[k] = Math.round(sum[k] * 100) / 100;
+  for (const k of ['today', 'week', 'lastWeek', 'month', 'year']) sum[k] = Math.round(sum[k] * 100) / 100;
   const value = { configured: true, currency: 'USD', ...sum, recent, partial: !!error, updatedAt: new Date().toISOString() };
   cache = { at: Date.now(), value };
   return json(value);
