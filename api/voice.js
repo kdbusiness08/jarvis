@@ -25,13 +25,15 @@ export async function POST(req) {
   const text = String(b.text || '').trim().slice(0, 1500);
   if (!text) return json({ error: 'Bad request' }, 400);
   const voice = VOICES.has(b.voice) ? b.voice : (process.env.JARVIS_VOICE || 'Charon');
-  const style = 'Read this aloud in a calm, warm, refined British accent, like a polished English butler. Natural pace, relaxed and confident, never robotic';
+  const styles = { none: '', short: 'Say in a calm, refined British accent: ', butler: 'Say like a calm, polished English butler: ' };
+  const prefix = styles[b.style] ?? styles[process.env.JARVIS_VOICE_STYLE] ?? styles.short;
   const body = JSON.stringify({
-    contents: [{ role: 'user', parts: [{ text: `${style}:\n${text}` }] }],
+    contents: [{ role: 'user', parts: [{ text: prefix + text }] }],
     generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } } }
   });
   let last = '', limited = false;
-  for (const model of [process.env.JARVIS_VOICE_MODEL, ...MODELS].filter(Boolean)) {
+  const order = [...new Set([MODELS.includes(b.model) ? b.model : null, process.env.JARVIS_VOICE_MODEL, ...MODELS].filter(Boolean))];
+  for (const model of order) {
     if ((tired.get(model) || 0) > Date.now()) { limited = true; continue }
     const ac = new AbortController(); const t = setTimeout(() => ac.abort(), 12000);
     let r;
