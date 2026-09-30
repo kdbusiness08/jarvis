@@ -308,7 +308,7 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
         <div class="np" id="np"></div>
       </div>
       <div class="card" style="flex:1.1">
-        <div class="card-h"><h2>Schedule</h2><span class="rule"></span><span class="sub" id="calSub"></span></div>
+        <div class="card-h"><h2>Booked calls</h2><span class="rule"></span><span class="sub" id="calSub"></span></div>
         <div class="rows" id="calRows"></div>
       </div>
       <div class="card" style="flex:1">
@@ -526,18 +526,24 @@ function render() {
 document.querySelectorAll('.seg button').forEach(b => b.onclick = () => { S.tab = b.dataset.k; document.querySelectorAll('.seg button').forEach(x => x.setAttribute('aria-selected', x === b)); render() });
 
 function renderCal() {
-  const box = $('#calRows'); box.replaceChildren();
-  if (!CAL || !CAL.configured) { const e = el('div', 'empty'); e.innerHTML = 'Google Calendar isn\'t set up yet. Follow the setup guide, then connect it in Settings.'; box.append(e); $('#calSub').textContent = ''; return }
+  const box = $('#calRows'); box.replaceChildren(); $('#calSub').textContent = '';
+  if (!CAL || !CAL.configured) { box.append(el('div', 'empty', 'Connect Zoom to see your booked calls here.')); return }
   if (!CAL.linked) { const e = el('div', 'empty'); e.append('Connect your Google Calendar so Jarvis can read and book your calls. '); const a = el('a', 'linkbtn', 'Connect'); a.href = '/api/google?action=login'; e.append(a); box.append(e); return }
-  if (CAL.error) { box.append(el('div', 'empty', 'Calendar error: ' + CAL.error)); return }
-  const today = localISO(), tomorrow = localISO(new Date(Date.now() + 86400000));
-  const evs = (CAL.events || []).filter(e => { const d = e.allDay ? e.start : localISO(new Date(e.start)); return d === today || d === tomorrow });
-  $('#calSub').textContent = evs.filter(e => (e.allDay ? e.start : localISO(new Date(e.start))) === today).length + ' today';
-  if (!evs.length) { const e = el('div', 'empty'); e.innerHTML = 'Clear today and tomorrow. Try <q>Jarvis, book a call with Marcus Friday at 2pm.</q>'; box.append(e); return }
-  let lastDay = '';
+  if (CAL.error) { box.append(el('div', 'empty', (CAL.source === 'zoom' ? 'Zoom' : 'Calendar') + ' error: ' + CAL.error)); return }
+  const today = localISO(), limit = shiftISO(today, 7);
+  const dayOf = e => e.allDay ? e.start : localISO(new Date(e.start));
+  const evs = (CAL.events || []).filter(e => { const d = dayOf(e); return d >= today && d <= limit });
+  const nToday = evs.filter(e => dayOf(e) === today).length;
+  $('#calSub').textContent = nToday + ' today' + (CAL.source === 'zoom' ? ' · ' + (CAL.week ?? evs.length) + ' this week' : '');
+  if (!evs.length) { box.append(el('div', 'empty', CAL.source === 'zoom' ? 'No calls booked in the next 7 days.' : 'Clear for the next 7 days.')); return }
+  let last = '';
   for (const e of evs) {
-    const d = e.allDay ? e.start : localISO(new Date(e.start));
-    if (d !== lastDay) { lastDay = d; const h = el('div', 'empty', d === today ? 'Today' : 'Tomorrow'); h.style.cssText = 'padding:8px 8px 2px;font-family:var(--f-mono);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase'; box.append(h) }
+    const d = dayOf(e);
+    if (d !== last) {
+      last = d;
+      const lab = d === today ? 'Today' : d === shiftISO(today, 1) ? 'Tomorrow' : new Date(d + 'T00:00:00').toLocaleDateString('en-AU', { weekday: 'long', day: 'numeric', month: 'short' });
+      const h = el('div', 'empty', lab); h.style.cssText = 'padding:8px 8px 2px;font-family:var(--f-mono);font-size:10.5px;letter-spacing:.18em;text-transform:uppercase'; box.append(h);
+    }
     const past = !e.allDay && new Date(e.end) < new Date();
     const w = el('div', 'row' + (past ? ' past' : ''));
     w.append(el('div', 'av time', e.allDay ? 'ALL' : localTime(new Date(e.start))));
@@ -686,7 +692,18 @@ async function loadWhop(fresh) {
   try { W = await api('/api/whop' + (fresh ? '?fresh=1' : '')) } catch (e) { if (e.code === 'locked') return; W = { configured: true, error: e.message } }
   render(); announceSales();
 }
-async function loadCal() { try { CAL = await api('/api/google?days=8') } catch (e) { if (e.code === 'locked') return; CAL = { configured: true, linked: true, error: e.message } } renderCal() }
+async function loadCal() {
+  try {
+    const z = await api('/api/zoom');
+    if (z.configured) {
+      CAL = z.error ? { configured: true, linked: true, source: 'zoom', error: z.error }
+        : { configured: true, linked: true, source: 'zoom', week: z.week, events: (z.meetings || []).map(m => ({ id: 'z' + m.id + m.start, title: m.topic, start: m.start, end: new Date(new Date(m.start).getTime() + m.duration * 60000).toISOString(), link: m.join })) };
+      renderCal(); return;
+    }
+  } catch (e) { if (e.code === 'locked') return }
+  try { CAL = await api('/api/google?days=8') } catch (e) { if (e.code === 'locked') return; CAL = { configured: true, linked: true, error: e.message } }
+  renderCal();
+}
 async function loadNP() { try { SP = await api('/api/spotify') } catch (e) { if (e.code === 'locked') return; SP = SP || { configured: true, linked: true } } renderNP() }
 async function spotify(body) {
   try { const r = await api('/api/spotify', { method: 'POST', body: JSON.stringify(body) }); if (r.now) { SP = { ...SP, ...r.now, configured: true, linked: true } } setTimeout(loadNP, 1200); renderNP(); return { ok: true, said: r.said } }
@@ -789,7 +806,7 @@ Actions:
    When a lead buys, update the lead to won AND add a client.
   Goals: {"op":"goal","monthly":50000} and/or "yearly":600000
   Music: {"op":"spotify","do":"play","query":"focus","kind":"playlist|track|artist|any"}; also "do":"pause"|"resume"|"next"|"previous"|"shuffle"; volume: {"op":"spotify","do":"volume","value":60}. "Play my X playlist" -> kind playlist.
-  Calendar: {"op":"calendar","do":"create","title":"Sales call - Marcus","start":"YYYY-MM-DDTHH:MM","minutes":45,"description":"..."}; {"op":"calendar","do":"move","id":"<event id>","start":"...","minutes":30}; {"op":"calendar","do":"delete","id":"<event id>"}. Times are Brisbane local.
+  Calendar: {"op":"calendar","do":"create","title":"Sales call - Marcus","start":"YYYY-MM-DDTHH:MM","minutes":45,"description":"..."}; {"op":"calendar","do":"move","id":"<event id>","start":"...","minutes":30}; {"op":"calendar","do":"delete","id":"<event id>"}. Times are Brisbane local. Only use calendar actions when CALLS & CALENDAR comes from Google Calendar. If it comes from Zoom you can read his booked calls (count them, prep him, remind him) but can't book or move them yet, so tell him that.
   Open apps: {"op":"open","app":"excel|word|powerpoint|gmail|calendar|whop|spotify|instagram"} or {"op":"open","url":"https://..."}. "New spreadsheet" -> excel.
   Timer: {"op":"timer","minutes":25,"label":"Focus"}  cancel: {"op":"timer","minutes":0}
   Listening: {"op":"quiet"} when he says go quiet / stop listening / give me a minute.
@@ -803,7 +820,7 @@ TODAY: ${when} (Brisbane)
 REVENUE (USD, Whop + manual): today ${money(rev.today)}, this week ${money(rev.week)}, this month ${money(rev.month)} from ${rev.countMonth} sales, this year ${money(rev.year)}
 GOALS: monthly ${D.goals?.monthly ? money(D.goals.monthly) : 'not set'}, yearly ${D.goals?.yearly ? money(D.goals.yearly) : 'not set'}
 WHOP: ${JSON.stringify(whop)}
-CALENDAR (next 8 days): ${JSON.stringify(cal)}
+CALLS & CALENDAR (next 8 days, from ${CAL?.source === 'zoom' ? 'Zoom' : 'Google Calendar'}): ${JSON.stringify(cal)}
 MUSIC: ${JSON.stringify(music)}
 TIMER: ${timer ? timer.label + ', ' + Math.ceil((timer.end - Date.now()) / 60000) + ' min left' : 'none'}
 SCOREBOARD (dms sent, calls booked, calls taken, closes): today ${JSON.stringify(dayStats(localISO()))}, this week ${JSON.stringify(statsRange(periods().week, localISO()))}, last week ${JSON.stringify(statsRange(shiftISO(periods().week, -7), shiftISO(periods().week, -1)))}
@@ -1113,6 +1130,7 @@ async function renderConns() {
   c.append(connRow('Cloud memory', ST.store ? 'Syncing across your devices' : 'Connect Upstash Redis in Vercel', ST.store || 'warn'));
   c.append(connRow('Whop', ST.whop ? (W?.error ? 'Error: ' + W.error : 'Live sales and revenue') : 'Add WHOP_API_KEY in Vercel', ST.whop && !W?.error));
   c.append(connRow('Spotify', !ST.spotify.configured ? 'Add Spotify keys in Vercel' : ST.spotify.linked ? 'Connected' : 'Ready to connect', ST.spotify.linked, ST.spotify.configured ? [ST.spotify.linked ? 'Reconnect' : 'Connect', '/api/spotify?action=login'] : null));
+  c.append(connRow('Zoom', ST.zoom ? 'Showing your booked calls' : 'Add Zoom keys in Vercel', !!ST.zoom));
   c.append(connRow('Google Calendar', !ST.google.configured ? 'Add Google keys in Vercel' : ST.google.linked ? 'Connected' : 'Ready to connect', ST.google.linked, ST.google.configured ? [ST.google.linked ? 'Reconnect' : 'Connect', '/api/google?action=login'] : null));
 }
 function rateUI() { $('#rateV').textContent = (+$('#rate').value).toFixed(2) + '×' }
