@@ -204,6 +204,15 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
 .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:rgba(6,20,48,.96);border:1px solid var(--line);padding:8px 16px;font-family:var(--f-mono);font-size:12px;z-index:40;border-radius:6px;display:flex;align-items:center;gap:12px;box-shadow:0 0 24px rgba(59,140,255,.35);max-width:calc(100% - 32px)}
 .toast button{border:0;background:none;color:var(--holo-hi);padding:0;font-family:inherit;letter-spacing:.1em}
 
+.addbtn{height:24px;padding:0 10px;border-radius:5px;border:1px solid var(--line);background:rgba(59,140,255,.1);color:var(--holo-hi);font-family:var(--f-mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap;position:relative}
+.addbtn:hover{box-shadow:0 0 12px rgba(59,140,255,.45)}
+.main.click{cursor:pointer;border-radius:4px}
+.main.click:hover .nm{color:var(--holo-hi);text-shadow:0 0 8px rgba(59,140,255,.7)}
+.fstack{display:flex;flex-direction:column;gap:12px;position:relative}
+.field textarea{min-height:72px;background:rgba(1,8,20,.7);border:1px solid var(--line);color:var(--fg);padding:9px 12px;border-radius:6px;font:inherit;resize:vertical}
+.field input[type=date]{height:38px;background:rgba(1,8,20,.7);border:1px solid var(--line);color:var(--fg);padding:0 12px;border-radius:6px;font:inherit;min-width:0}
+.chkline{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--muted);position:relative}
+.linkbtn.danger{color:var(--bad);border-color:rgba(255,127,127,.4);background:rgba(255,127,127,.08)}
 @media (max-width:1080px){
   body{overflow:auto}
   .app{height:auto;min-height:100%;padding-inline:16px}
@@ -237,7 +246,7 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
   <main>
     <section class="col l" aria-label="Revenue and pipeline">
       <div class="card">
-        <div class="card-h"><h2>Revenue</h2><span class="rule"></span><span class="sub" id="revSrc">Loading</span></div>
+        <div class="card-h"><h2>Revenue</h2><span class="rule"></span><span class="sub" id="revSrc">Loading</span><button class="addbtn" id="goalBtn" type="button">Goals</button></div>
         <div class="goals">
           <div class="goal">
             <div class="ringwrap"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="42" fill="none" stroke="rgba(59,140,255,.15)" stroke-width="7"/><circle id="ringM" cx="50" cy="50" r="42" fill="none" stroke="#ffb54a" stroke-width="7" stroke-linecap="round" stroke-dasharray="0 264" style="filter:drop-shadow(0 0 4px rgba(255,181,74,.8))"/></svg><span class="pct" id="pctM">–</span></div>
@@ -255,7 +264,7 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
         </div>
       </div>
       <div class="card" style="flex:1">
-        <div class="card-h"><h2>Pipeline</h2><span class="rule"></span><span class="sub" id="pipeSub"></span></div>
+        <div class="card-h"><h2>Pipeline</h2><span class="rule"></span><span class="sub" id="pipeSub"></span><button class="addbtn" id="addPipe" type="button">+ Add</button></div>
         <div class="seg" role="tablist">
           <button role="tab" aria-selected="true" data-k="lead">Leads<span class="n" id="n-lead"></span></button>
           <button role="tab" aria-selected="false" data-k="client">Clients<span class="n" id="n-client"></span></button>
@@ -290,7 +299,7 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
         <div class="rows" id="calRows"></div>
       </div>
       <div class="card" style="flex:1">
-        <div class="card-h"><h2>Tasks</h2><span class="rule"></span><span class="sub" id="taskCount"></span></div>
+        <div class="card-h"><h2>Tasks</h2><span class="rule"></span><span class="sub" id="taskCount"></span><button class="addbtn" id="addTask" type="button">+ Add</button></div>
         <div class="rows" id="taskRows"></div>
       </div>
     </section>
@@ -345,6 +354,16 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
 
     <div class="rowf" style="justify-content:flex-end"><button class="primary" id="closeSet" type="button">Done</button></div>
   </div>
+</div>
+<div class="modal" id="recModal" hidden>
+  <form class="card sheet" id="recForm" role="dialog" aria-labelledby="recTitle" novalidate>
+    <h2 id="recTitle">Add lead</h2>
+    <div class="fstack" id="recFields"></div>
+    <div class="rowf" style="justify-content:space-between">
+      <button type="button" class="linkbtn danger" id="recDelete">Delete</button>
+      <div class="rowf"><button type="button" class="linkbtn" id="recCancel">Cancel</button><button type="submit" class="primary">Save</button></div>
+    </div>
+  </form>
 </div>
 <div class="toast" id="toast" hidden></div>
 
@@ -439,7 +458,7 @@ function row(r) {
     const c = el('input', 'chk'); c.type = 'checkbox'; c.checked = r.status === 'done'; c.setAttribute('aria-label', 'Done: ' + r.name);
     c.onchange = () => store.update(r.id, { status: c.checked ? 'done' : 'open' }); w.append(c);
   } else w.append(el('div', 'av' + (r.kind === 'sale' ? ' money' : ''), r.kind === 'sale' ? '$' : r.kind === 'note' ? '✦' : initials(r.name)));
-  const m = el('div', 'main'); m.append(el('div', 'nm', r.name));
+  const m = el('div', 'main click'); m.append(el('div', 'nm', r.name)); m.tabIndex = 0; m.title = 'Edit'; m.onclick = () => openForm(r.kind, r); m.onkeydown = e => { if (e.key === 'Enter') openForm(r.kind, r) };
   const det = [r.detail, r.program, r.source && 'via ' + r.source].filter(Boolean).join(' · '); if (det) m.append(el('div', 'dt', det)); w.append(m);
   const meta = el('div', 'meta'), line = el('div', 'line');
   if (r.status && !task) line.append(el('span', 'tag t-' + (TONE[r.status] || 'mid'), r.status));
@@ -532,6 +551,69 @@ function renderNP() {
   mk('next', 'Next', () => spotify({ do: 'next' }));
   box.append(c);
 }
+
+/* ---------- manual entry ---------- */
+const FORM = {
+  lead: { title: 'lead', fields: [{ k: 'name', l: 'Name', t: 'text', req: 1 }, { k: 'status', l: 'Stage', t: 'select', opts: ['new', 'contacted', 'booked', 'no-show', 'won', 'lost'] }, { k: 'source', l: 'Where they came from', t: 'text', ph: 'Instagram, referral, TikTok…' }, { k: 'due', l: 'Follow up on', t: 'date' }, { k: 'amount', l: 'Deal value ($)', t: 'number' }, { k: 'phone', l: 'Phone or @handle', t: 'text' }, { k: 'detail', l: 'Notes', t: 'textarea' }] },
+  client: { title: 'client', fields: [{ k: 'name', l: 'Name', t: 'text', req: 1 }, { k: 'program', l: 'What they bought', t: 'text', ph: 'Rise Mentorship' }, { k: 'amount', l: 'Amount paid ($)', t: 'number' }, { k: 'date', l: 'Start date', t: 'date' }, { k: 'status', l: 'Status', t: 'select', opts: ['active', 'completed', 'refunded'] }, { k: 'phone', l: 'Phone or @handle', t: 'text' }, { k: 'detail', l: 'Notes', t: 'textarea' }] },
+  sale: { title: 'sale', fields: [{ k: 'name', l: 'Who paid', t: 'text', req: 1 }, { k: 'amount', l: 'Amount ($)', t: 'number', req: 1 }, { k: 'date', l: 'Date paid', t: 'date' }, { k: 'detail', l: 'Notes', t: 'text', ph: 'Bank transfer, PayPal…' }] },
+  task: { title: 'task', fields: [{ k: 'name', l: 'Task', t: 'text', req: 1 }, { k: 'due', l: 'Due', t: 'date' }, { k: 'detail', l: 'Notes', t: 'textarea' }] },
+  note: { title: 'note', fields: [{ k: 'name', l: 'Title', t: 'text', req: 1 }, { k: 'detail', l: 'Note', t: 'textarea' }] },
+  goals: { title: 'goals', fields: [{ k: 'monthly', l: 'Monthly revenue goal ($)', t: 'number', ph: 'e.g. 50000' }, { k: 'yearly', l: 'Yearly revenue goal ($)', t: 'number', ph: 'e.g. 600000' }] }
+};
+let formCtx = null;
+function openForm(kind, rec) {
+  const spec = FORM[kind]; if (!spec) return;
+  formCtx = { kind, rec };
+  $('#recTitle').textContent = kind === 'goals' ? 'Revenue goals' : (rec ? 'Edit ' : 'Add ') + spec.title;
+  const box = $('#recFields'); box.replaceChildren();
+  const vals = kind === 'goals' ? (D.goals || {}) : (rec || {});
+  for (const f of spec.fields) {
+    const w = el('div', 'field'), id = 'rf-' + f.k, lab = el('label', null, f.l + (f.req ? ' *' : '')); lab.htmlFor = id; w.append(lab);
+    let inp;
+    if (f.t === 'textarea') inp = el('textarea');
+    else if (f.t === 'select') { inp = el('select'); f.opts.forEach(o => { const op = el('option', null, o[0].toUpperCase() + o.slice(1)); op.value = o; inp.append(op) }) }
+    else { inp = el('input'); inp.type = f.t; if (f.t === 'number') { inp.min = '0'; inp.step = 'any'; inp.inputMode = 'decimal' } }
+    inp.id = id; inp.name = f.k; if (f.ph) inp.placeholder = f.ph;
+    let v = vals[f.k];
+    if (v == null && !rec && kind !== 'goals') { if (f.k === 'date') v = localISO(); if (f.t === 'select') v = f.opts[0] }
+    if (v != null && v !== '' && !(kind === 'goals' && !v)) inp.value = v;
+    w.append(inp); box.append(w);
+  }
+  if (kind === 'client' && !rec) {
+    const l = el('label', 'chkline'), c = el('input'); c.type = 'checkbox'; c.id = 'rf-logsale'; c.checked = !(W && W.configured && !W.error);
+    l.append(c, 'Count this payment in revenue (paid outside Whop)'); box.append(l);
+  }
+  $('#recDelete').hidden = !rec || kind === 'goals';
+  $('#recModal').hidden = false; setTimeout(() => box.querySelector('input,textarea,select')?.focus(), 30);
+}
+function closeForm() { $('#recModal').hidden = true; formCtx = null }
+$('#recForm').onsubmit = e => {
+  e.preventDefault(); if (!formCtx) return;
+  const { kind, rec } = formCtx, fields = FORM[kind].fields, vals = {};
+  for (const f of fields) vals[f.k] = $('#rf-' + f.k).value.trim();
+  const missing = fields.find(f => f.req && !vals[f.k]);
+  if (missing) { $('#rf-' + missing.k).focus(); toast(missing.l + ' is needed'); return }
+  if (kind === 'goals') { D.goals = { monthly: Number(vals.monthly) || 0, yearly: Number(vals.yearly) || 0 }; persist(); render(); closeForm(); toast('Goals saved'); return }
+  if (rec) {
+    const r = D.records.find(x => x.id === rec.id);
+    if (r) for (const f of fields) if (!vals[f.k]) delete r[f.k];
+    store.update(rec.id, vals); toast('Saved');
+  } else {
+    store.add({ kind, ...vals });
+    if (kind === 'client' && $('#rf-logsale')?.checked && Number(vals.amount) > 0) store.add({ kind: 'sale', name: vals.name, amount: vals.amount, date: vals.date || localISO(), detail: vals.program || 'Client payment' });
+    toast('Added');
+    if (kind !== 'task' && S.tab !== kind) { S.tab = kind; document.querySelectorAll('.seg button').forEach(x => x.setAttribute('aria-selected', x.dataset.k === kind)); render() }
+  }
+  closeForm();
+};
+$('#recCancel').onclick = closeForm;
+$('#recDelete').onclick = () => { if (!formCtx?.rec) return; const old = store.remove(formCtx.rec.id); closeForm(); if (old) toast('Deleted ' + old.name, () => store.restore(old)) };
+$('#recModal').onclick = e => { if (e.target.id === 'recModal') closeForm() };
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#recModal').hidden) closeForm() });
+$('#addPipe').onclick = () => openForm(S.tab);
+$('#addTask').onclick = () => openForm('task');
+$('#goalBtn').onclick = () => openForm('goals');
 
 /* ---------- log ---------- */
 function addMsg(who, text) { const m = el('div', 'msg ' + who, text); $('#log').append(m); while ($('#log').children.length > 80) $('#log').firstChild.remove(); $('#log').scrollTop = 1e9; return m }
