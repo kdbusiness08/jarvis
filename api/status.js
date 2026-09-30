@@ -7,7 +7,7 @@ export async function GET(req) {
   try { spotifyLinked = !!(await kget('spotify:refresh')); googleLinked = !!(await kget('google:refresh')) } catch (e) { storeOk = false; storeError = e.message }
   const env = process.env;
   return json({
-    brain: !!env.ANTHROPIC_API_KEY,
+    brain: !!(env.GEMINI_API_KEY || env.ANTHROPIC_API_KEY),
     store: storeOk, storeError, tz: TZ(),
     whop: !!env.WHOP_API_KEY,
     spotify: { configured: !!(env.SPOTIFY_CLIENT_ID && env.SPOTIFY_CLIENT_SECRET), linked: spotifyLinked },
