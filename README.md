@@ -1,5 +1,7 @@
 # Jarvis for Rise Agency: setup guide
 
+**Live at:** https://jarvis-murex-chi.vercel.app
+
 This gets Jarvis live as your own private website in about 30 to 45 minutes. Do the steps in order. You only do this once.
 
 **What you'll end up with:** a private web address (like `https://jarvis-rise.vercel.app`) that opens to a passcode screen. Type `jarvis` and he's listening.
