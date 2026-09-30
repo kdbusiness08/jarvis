@@ -38,12 +38,13 @@ export async function GET(req) {
     if (!info.has_next_page || !info.end_cursor) break;
     after = info.end_cursor;
   }
+  if (new URL(req.url).searchParams.has('debug')) { const st = {}; for (const p of payments) { const k = p.status + '/' + (p.substatus || ''); st[k] = (st[k] || 0) + 1 } return json({ fetched: payments.length, statuses: st, idParam, company: !!company, error, fields: Object.keys(payments[0] || {}) }) }
   if (error && !payments.length) return json({ configured: true, error }, 502);
 
   const sum = { today: 0, week: 0, lastWeek: 0, month: 0, year: 0, countToday: 0, countMonth: 0, countYear: 0 };
   const recent = [];
   for (const pay of payments) {
-    if (pay.status !== 'paid') continue;
+    if (!['paid', 'succeeded'].includes(pay.status) && pay.substatus !== 'succeeded') continue;
     const gross = Number(pay.usd_total ?? pay.total ?? pay.subtotal ?? 0);
     const amount = Math.max(0, gross - Number(pay.refunded_amount || 0));
     const at = new Date(pay.paid_at || pay.created_at);
