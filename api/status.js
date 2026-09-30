@@ -11,6 +11,7 @@ export async function GET(req) {
     store: storeOk, storeError, tz: TZ(),
     whop: !!env.WHOP_API_KEY,
     spotify: { configured: !!(env.SPOTIFY_CLIENT_ID && env.SPOTIFY_CLIENT_SECRET), linked: spotifyLinked },
+    zoom: !!(env.ZOOM_ACCOUNT_ID && env.ZOOM_CLIENT_ID && env.ZOOM_CLIENT_SECRET),
     google: { configured: !!(env.GOOGLE_CLIENT_ID && env.GOOGLE_CLIENT_SECRET), linked: googleLinked }
   });
 }
