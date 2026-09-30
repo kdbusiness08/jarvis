@@ -213,6 +213,15 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
 .field input[type=date]{height:38px;background:rgba(1,8,20,.7);border:1px solid var(--line);color:var(--fg);padding:0 12px;border-radius:6px;font:inherit;min-width:0}
 .chkline{display:flex;gap:8px;align-items:center;font-size:13px;color:var(--muted);position:relative}
 .linkbtn.danger{color:var(--bad);border-color:rgba(255,127,127,.4);background:rgba(255,127,127,.08)}
+.score{display:grid;grid-template-columns:repeat(4,1fr);position:relative}
+.sc{padding:6px 8px 12px;text-align:center;min-width:0}
+.sc+.sc{border-left:1px solid var(--line-lo)}
+.sc .k{font-size:10.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sc .v{font-size:22px;font-weight:300;font-variant-numeric:tabular-nums;line-height:1.3}
+.sc .pm{display:flex;justify-content:center;gap:6px;margin-top:2px}
+.sc .pm button{width:26px;height:22px;border-radius:4px;border:1px solid var(--line-lo);background:rgba(59,140,255,.07);color:var(--holo-hi);font-size:13px;line-height:1;padding:0}
+.sc .pm button:hover{box-shadow:0 0 10px rgba(59,140,255,.45)}
+.wake.sm{height:30px;padding:0 12px;font-size:10.5px;letter-spacing:.14em}
 @media (max-width:1080px){
   body{overflow:auto}
   .app{height:auto;min-height:100%;padding-inline:16px}
@@ -263,6 +272,10 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
           <div class="mini"><div class="k">Sales this month</div><div class="v" id="cntM">0</div></div>
         </div>
       </div>
+      <div class="card">
+        <div class="card-h"><h2>Today's numbers</h2><span class="rule"></span><span class="sub" id="scoreSub"></span></div>
+        <div class="score" id="score"></div>
+      </div>
       <div class="card" style="flex:1">
         <div class="card-h"><h2>Pipeline</h2><span class="rule"></span><span class="sub" id="pipeSub"></span><button class="addbtn" id="addPipe" type="button">+ Add</button></div>
         <div class="seg" role="tablist">
@@ -278,7 +291,7 @@ input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;bac
     <section class="center" aria-label="Jarvis">
       <div class="sphere"><canvas id="orb" aria-hidden="true"></canvas></div>
       <div class="state" id="stateBox" role="status"><i></i><span id="status">Standing by</span></div>
-      <div class="actions"><button class="wake" id="wakeBtn">Brief me</button><button class="wake ghost" id="stopBtn">Stop talking</button></div>
+      <div class="actions"><button class="wake" id="wakeBtn">Brief me</button><button class="wake ghost sm" id="fuBtn">Follow-ups</button><button class="wake ghost sm" id="contentBtn">Content ideas</button><button class="wake ghost sm" id="weekBtn">Weekly report</button><button class="wake ghost sm" id="stopBtn">Stop</button></div>
       <div class="card convo">
         <div class="log" id="log" aria-live="polite"></div>
         <div class="interim" id="interim"></div>
@@ -422,12 +435,12 @@ async function pullData(first) {
   } catch (e) { if (first) { const local = LS.get('data', null); if (local) D = local; render() } }
 }
 const store = {
-  add(rec) { const r = clean(rec); r.id = uid(); r.createdAt = Date.now(); if (r.kind === 'sale' && !r.date) r.date = localISO(); D.records.push(r); persist(); render(); return r },
-  update(id, patch) { const r = D.records.find(x => x.id === id); if (!r) return false; Object.assign(r, clean(patch)); persist(); render(); return true },
+  add(rec) { const r = clean(rec); r.id = uid(); r.createdAt = Date.now(); r.touched = localISO(); if (r.kind === 'sale' && !r.date) r.date = localISO(); D.records.push(r); persist(); render(); return r },
+  update(id, patch) { const r = D.records.find(x => x.id === id); if (!r) return false; Object.assign(r, clean(patch)); r.touched = localISO(); persist(); render(); return true },
   remove(id) { const i = D.records.findIndex(x => x.id === id); if (i < 0) return null; const [r] = D.records.splice(i, 1); persist(); render(); return r },
   restore(r) { D.records.push(r); persist(); render() }
 };
-const FIELDS = ['kind', 'name', 'detail', 'status', 'amount', 'due', 'date', 'source', 'program', 'phone'];
+const FIELDS = ['kind', 'name', 'detail', 'status', 'amount', 'due', 'date', 'source', 'program', 'phone', 'progress', 'result', 'touched'];
 function clean(o) { const out = {}; for (const k of FIELDS) if (o[k] !== undefined && o[k] !== null && o[k] !== '') out[k] = k === 'amount' ? Number(String(o[k]).replace(/[^0-9.]/g, '')) || 0 : String(o[k]).slice(0, 2000); return out }
 
 /* ---------- revenue ---------- */
@@ -459,7 +472,7 @@ function row(r) {
     c.onchange = () => store.update(r.id, { status: c.checked ? 'done' : 'open' }); w.append(c);
   } else w.append(el('div', 'av' + (r.kind === 'sale' ? ' money' : ''), r.kind === 'sale' ? '$' : r.kind === 'note' ? '✦' : initials(r.name)));
   const m = el('div', 'main click'); m.append(el('div', 'nm', r.name)); m.tabIndex = 0; m.title = 'Edit'; m.onclick = () => openForm(r.kind, r); m.onkeydown = e => { if (e.key === 'Enter') openForm(r.kind, r) };
-  const det = [r.detail, r.program, r.source && 'via ' + r.source].filter(Boolean).join(' · '); if (det) m.append(el('div', 'dt', det)); w.append(m);
+  const det = [r.result && '★ ' + r.result, r.progress, r.detail, r.program, r.source && 'via ' + r.source].filter(Boolean).join(' · '); if (det) m.append(el('div', 'dt', det)); w.append(m);
   const meta = el('div', 'meta'), line = el('div', 'line');
   if (r.status && !task) line.append(el('span', 'tag t-' + (TONE[r.status] || 'mid'), r.status));
   const x = el('button', 'x', '×'); x.setAttribute('aria-label', 'Remove ' + r.name);
@@ -486,7 +499,7 @@ function setRing(id, pctId, ofId, val, goal) {
   const c = 2 * Math.PI * 42, f = goal > 0 ? Math.min(1, val / goal) : 0;
   $(id).setAttribute('stroke-dasharray', (f * c).toFixed(1) + ' ' + c.toFixed(1)); $(id).style.opacity = f > 0 ? 1 : 0;
   $(pctId).textContent = goal > 0 ? Math.round(val / goal * 100) + '%' : '–';
-  $(ofId).textContent = goal > 0 ? 'of ' + moneyShort(goal) + ' goal' : 'Set a goal in settings';
+  $(ofId).textContent = goal > 0 ? 'of ' + moneyShort(goal) + ' goal' : 'Tap Goals to set one';
 }
 function render() {
   const R = D.records, by = k => R.filter(r => r.kind === k);
@@ -499,7 +512,7 @@ function render() {
   $('#revSrc').textContent = W && W.configured ? (W.error ? 'Whop error' : 'Live from Whop') : W ? 'Manual sales' : 'Loading';
   for (const k of ['lead', 'client', 'sale', 'note']) $('#n-' + k).textContent = by(k).length || '';
   const openLeads = by('lead').filter(l => !['won', 'lost'].includes(l.status));
-  $('#pipeSub').textContent = openLeads.length + ' open · ' + by('lead').filter(l => l.status === 'booked').length + ' booked';
+  const cold = coldLeads().length; $('#pipeSub').textContent = openLeads.length + ' open · ' + by('lead').filter(l => l.status === 'booked').length + ' booked' + (cold ? ' · ' + cold + ' to follow up' : '');
   const newest = (a, b) => (b.createdAt || 0) - (a.createdAt || 0);
   let list = by(S.tab);
   if (S.tab === 'lead') list.sort((a, b) => (['won', 'lost'].includes(a.status) - ['won', 'lost'].includes(b.status)) || (a.due || '9').localeCompare(b.due || '9'));
@@ -508,7 +521,7 @@ function render() {
   fill($('#pipeRows'), list, S.tab);
   const tasks = by('task').sort((a, b) => (a.status === 'done') - (b.status === 'done') || (a.due || '9').localeCompare(b.due || '9'));
   fill($('#taskRows'), tasks, 'task');
-  const open = tasks.filter(t => t.status !== 'done').length; $('#taskCount').textContent = open ? open + ' open' : '';
+  const open = tasks.filter(t => t.status !== 'done').length; $('#taskCount').textContent = open ? open + ' open' : ''; renderScore();
 }
 document.querySelectorAll('.seg button').forEach(b => b.onclick = () => { S.tab = b.dataset.k; document.querySelectorAll('.seg button').forEach(x => x.setAttribute('aria-selected', x === b)); render() });
 
@@ -552,10 +565,55 @@ function renderNP() {
   box.append(c);
 }
 
+/* ---------- scoreboard, follow-ups, reports ---------- */
+const STAT_KEYS = [['dms', 'DMs sent'], ['booked', 'Calls booked'], ['taken', 'Calls taken'], ['closes', 'Closes']];
+function dayStats(d) { return (D.stats && D.stats[d]) || { dms: 0, booked: 0, taken: 0, closes: 0 } }
+function setStats(d, patch, mode) {
+  D.stats = D.stats || {}; const cur = { ...dayStats(d) };
+  for (const [k] of STAT_KEYS) if (patch[k] != null && patch[k] !== '' && !isNaN(+patch[k])) cur[k] = Math.max(0, mode === 'set' ? +patch[k] : (cur[k] || 0) + +patch[k]);
+  D.stats[d] = cur;
+  const keys = Object.keys(D.stats).sort(); while (keys.length > 150) delete D.stats[keys.shift()];
+  persist(); renderScore();
+}
+function shiftISO(iso, days) { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10) }
+function statsRange(from, to) { const t = { dms: 0, booked: 0, taken: 0, closes: 0 }; for (const [d, v] of Object.entries(D.stats || {})) if (d >= from && d <= to) for (const [k] of STAT_KEYS) t[k] += v[k] || 0; return t }
+function lastWeekRev() {
+  const from = shiftISO(periods().week, -7), to = shiftISO(periods().week, -1); let m = 0;
+  for (const r of D.records) if (r.kind === 'sale' && r.amount) { const d = r.date || localISO(new Date(r.createdAt || Date.now())); if (d >= from && d <= to) m += r.amount }
+  return m + (W && W.configured && !W.error ? (W.lastWeek || 0) : 0);
+}
+function renderScore() {
+  const box = $('#score'); if (!box) return; box.replaceChildren();
+  const today = localISO(), s = dayStats(today);
+  for (const [k, label] of STAT_KEYS) {
+    const c = el('div', 'sc'); c.append(el('div', 'k', label), el('div', 'v', s[k] || 0));
+    const pm = el('div', 'pm'), minus = el('button', null, '−'), plus = el('button', null, '+');
+    minus.type = plus.type = 'button'; minus.setAttribute('aria-label', 'Take one off ' + label); plus.setAttribute('aria-label', 'Add one to ' + label);
+    minus.onclick = () => setStats(today, { [k]: -1 }); plus.onclick = () => setStats(today, { [k]: 1 });
+    pm.append(minus, plus); c.append(pm); box.append(c);
+  }
+  const wk = statsRange(periods().week, today);
+  $('#scoreSub').textContent = 'Week ' + wk.closes + '/' + wk.taken + ' closed' + (wk.taken ? ' · ' + Math.round(wk.closes / wk.taken * 100) + '%' : '');
+}
+function coldLeads() {
+  const today = localISO(), limit = shiftISO(today, -3);
+  return D.records.filter(r => r.kind === 'lead' && !['won', 'lost'].includes(r.status) && ((r.due && r.due <= today) || (!r.due && (r.touched || localISO(new Date(r.createdAt || Date.now()))) <= limit)));
+}
+function followUps(display) {
+  const c = coldLeads();
+  ask(c.length ? `[Draft a short, personal follow-up DM for each lead that needs a follow-up: ${c.map(l => l.name).join(', ')}. Use what's in their records. Put all the messages in ONE draft titled "Follow-ups", each headed with the lead's name. Speak one sentence only.]` : '[I asked for follow-ups. No leads need one right now. Tell me that in one line and suggest one specific way to generate new leads today.]', display);
+}
+function weekly(display) {
+  ask('[Give me my weekly report, spoken, at most 6 sentences: last week vs this week revenue, DMs, calls booked, calls taken, closes and close rate, the biggest leak in my funnel based on those numbers, how far I am from my monthly goal and the daily numbers I need to hit it, and the one thing to fix this week. Also put a short written version in a draft titled "Weekly report".]', display);
+}
+$('#fuBtn').onclick = () => { stopSpeaking(); followUps('Follow-ups') };
+$('#contentBtn').onclick = () => { stopSpeaking(); ask('[Give me 5 content ideas for today to attract people in high-ticket sales who want to build a portfolio and land better commission roles. Mix formats: short video hooks, a carousel, a story poll, a client win post. Use real client results from RECORDS if there are any. Put them in a draft titled "Content ideas". Speak one sentence.]', 'Content ideas') };
+$('#weekBtn').onclick = () => { stopSpeaking(); weekly('Weekly report') };
+
 /* ---------- manual entry ---------- */
 const FORM = {
   lead: { title: 'lead', fields: [{ k: 'name', l: 'Name', t: 'text', req: 1 }, { k: 'status', l: 'Stage', t: 'select', opts: ['new', 'contacted', 'booked', 'no-show', 'won', 'lost'] }, { k: 'source', l: 'Where they came from', t: 'text', ph: 'Instagram, referral, TikTok…' }, { k: 'due', l: 'Follow up on', t: 'date' }, { k: 'amount', l: 'Deal value ($)', t: 'number' }, { k: 'phone', l: 'Phone or @handle', t: 'text' }, { k: 'detail', l: 'Notes', t: 'textarea' }] },
-  client: { title: 'client', fields: [{ k: 'name', l: 'Name', t: 'text', req: 1 }, { k: 'program', l: 'What they bought', t: 'text', ph: 'Rise Mentorship' }, { k: 'amount', l: 'Amount paid ($)', t: 'number' }, { k: 'date', l: 'Start date', t: 'date' }, { k: 'status', l: 'Status', t: 'select', opts: ['active', 'completed', 'refunded'] }, { k: 'phone', l: 'Phone or @handle', t: 'text' }, { k: 'detail', l: 'Notes', t: 'textarea' }] },
+  client: { title: 'client', fields: [{ k: 'name', l: 'Name', t: 'text', req: 1 }, { k: 'program', l: 'What they bought', t: 'text', ph: 'Rise Mentorship' }, { k: 'amount', l: 'Amount paid ($)', t: 'number' }, { k: 'date', l: 'Start date', t: 'date' }, { k: 'status', l: 'Status', t: 'select', opts: ['active', 'completed', 'refunded'] }, { k: 'progress', l: 'Progress', t: 'select', opts: ['onboarding', 'building portfolio', 'interviewing', 'landed role'] }, { k: 'result', l: 'Result or win', t: 'text', ph: 'Landed a $150k OTE closer role' }, { k: 'phone', l: 'Phone or @handle', t: 'text' }, { k: 'detail', l: 'Notes', t: 'textarea' }] },
   sale: { title: 'sale', fields: [{ k: 'name', l: 'Who paid', t: 'text', req: 1 }, { k: 'amount', l: 'Amount ($)', t: 'number', req: 1 }, { k: 'date', l: 'Date paid', t: 'date' }, { k: 'detail', l: 'Notes', t: 'text', ph: 'Bank transfer, PayPal…' }] },
   task: { title: 'task', fields: [{ k: 'name', l: 'Task', t: 'text', req: 1 }, { k: 'due', l: 'Due', t: 'date' }, { k: 'detail', l: 'Notes', t: 'textarea' }] },
   note: { title: 'note', fields: [{ k: 'name', l: 'Title', t: 'text', req: 1 }, { k: 'detail', l: 'Note', t: 'textarea' }] },
@@ -664,7 +722,13 @@ function checkUpcoming() {
   for (const e of CAL.events) {
     if (e.allDay || warned.has(e.id)) continue;
     const mins = (new Date(e.start) - now) / 60000;
-    if (mins > 0 && mins <= 10) { warned.add(e.id); LS.set('warned', [...warned].slice(-100)); const t = `Sir, ${e.title} starts in ${Math.round(mins)} minutes.`; addMsg('jarvis', t); speak(t) }
+    if (mins > 0 && mins <= 10) {
+      warned.add(e.id); LS.set('warned', [...warned].slice(-100));
+      const title = e.title.toLowerCase();
+      const who = D.records.find(r => (r.kind === 'lead' || r.kind === 'client') && r.name && r.name.split(' ')[0].length >= 3 && title.includes(r.name.toLowerCase().split(' ')[0]));
+      if (who && ST?.brain && !S.busy) ask(`[Call prep: "${e.title}" starts in ${Math.round(mins)} minutes with ${who.name}. Using their record, give me a spoken 3-sentence prep: who they are, the angle to take, and the likely objection with how to handle it. Put a fuller prep sheet in a draft titled "Call prep: ${who.name}".]`, 'Call prep: ' + e.title);
+      else { const t = `Sir, ${e.title} starts in ${Math.round(mins)} minutes.`; addMsg('jarvis', t); speak(t) }
+    }
   }
 }
 
@@ -729,6 +793,8 @@ Actions:
   Open apps: {"op":"open","app":"excel|word|powerpoint|gmail|calendar|whop|spotify|instagram"} or {"op":"open","url":"https://..."}. "New spreadsheet" -> excel.
   Timer: {"op":"timer","minutes":25,"label":"Focus"}  cancel: {"op":"timer","minutes":0}
   Listening: {"op":"quiet"} when he says go quiet / stop listening / give me a minute.
+  Scoreboard: {"op":"stats","dms":40,"booked":3,"taken":2,"closes":1} ADDS to today's numbers (only include what he mentions). Add "mode":"set" to overwrite, or "date":"YYYY-MM-DD" for another day.
+  Client progress: clients have progress (onboarding|building portfolio|interviewing|landed role) and result (e.g. "Landed a $150k OTE closer role at X"). Update these when he tells you. Client results are case studies: use them in content, DMs and sales calls.
 - Resolve relative dates ("Friday", "tomorrow at 2") from TODAY. If he gives no call length, use 30 minutes.
 - Only use ids that appear in the data below. If something isn't connected, tell him plainly and that it's in Settings.
 - Answer questions from the data. Don't invent numbers.
@@ -740,6 +806,9 @@ WHOP: ${JSON.stringify(whop)}
 CALENDAR (next 8 days): ${JSON.stringify(cal)}
 MUSIC: ${JSON.stringify(music)}
 TIMER: ${timer ? timer.label + ', ' + Math.ceil((timer.end - Date.now()) / 60000) + ' min left' : 'none'}
+SCOREBOARD (dms sent, calls booked, calls taken, closes): today ${JSON.stringify(dayStats(localISO()))}, this week ${JSON.stringify(statsRange(periods().week, localISO()))}, last week ${JSON.stringify(statsRange(shiftISO(periods().week, -7), shiftISO(periods().week, -1)))}
+LAST WEEK REVENUE: ${money(lastWeekRev())}
+LEADS NEEDING FOLLOW-UP: ${JSON.stringify(coldLeads().map(l => l.name))}
 RECORDS: ${JSON.stringify(data)}`;
 }
 
@@ -827,6 +896,7 @@ async function runActions(list) {
         case 'open': { const r = openApp(a.app, a.url); if (!r.ok) problems.push(r.error); break }
         case 'timer': if (Number(a.minutes) > 0) startTimer(Number(a.minutes), a.label); else { clearInterval(timer?.iv); timer = null; tickTimer() } break;
         case 'quiet': goQuiet(); break;
+        case 'stats': setStats(a.date || localISO(), a, a.mode); changed++; break;
       }
     } catch (e) { problems.push(e.message || String(e)) }
   }
@@ -1018,7 +1088,7 @@ async function unlock() {
   loops.push(setInterval(checkUpcoming, 30000));
   loops.push(setInterval(() => document.visibilityState === 'visible' && SP?.linked && loadNP(), 20000));
   loops.push(setInterval(() => pullData(false), 60000));
-  if (ST?.brain) wake(null);
+  if (ST?.brain) { const d = localISO(); if (new Date(d + 'T00:00:00Z').getUTCDay() === 1 && LS.get('weeklyDone', '') !== d) { LS.set('weeklyDone', d); weekly('Monday weekly report') } else wake(null) }
 }
 
 /* ---------- settings ---------- */
